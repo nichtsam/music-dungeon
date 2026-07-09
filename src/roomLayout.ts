@@ -1,0 +1,211 @@
+// Tile-grid room layout — the single source of geometry. Everything is placed
+// in (col,row) tile units on a 14x14 grid, per the 0x72 tileset's own anatomy:
+// top wall = cap row 0 + face row 1, bottom wall = cap row 13, side walls =
+// wall_side columns, corners from the corner set, native 2x2 door on north.
+import { SPR, TILE, type Spr } from "./sprites";
+import { hashKey, type CellExit, type ExitSlot } from "./dungeon";
+
+export const GRID = 14;
+export const ROOM_PX = GRID * TILE; // 672
+
+export interface TilePlace {
+  col: number;
+  row: number;
+  spr: Spr;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Layout {
+  tiles: TilePlace[]; // static wall/dressing/floor-patch layer, render in order
+  archways: { slot: ExitSlot; rect: Rect }[]; // dark openings (S/E/W doors)
+  northDoor: boolean; // native 2x2 leaf at cols 6-7 rows 0-1
+  bannerCols: number[]; // face-row banner positions (sprite chosen by mood)
+  fountainCol: number; // animated mid/basin rendered by Room2D at rows 1/2
+  suspectSpots: { x: number; y: number }[]; // pixel, tile-aligned candidates
+  props: TilePlace[];
+  sealed: { slot: ExitSlot; x: number; y: number }[];
+  bounds: { minX: number; minY: number; maxX: number; maxY: number }; // char area edges
+}
+
+// door gap lanes: cols 6-7 (north/south), rows 6-7 (east/west)
+const GAP_LO = 6;
+const GAP_HI = 7;
+
+// interaction zones per exit slot (pixel) — derived from the same grid
+export const ZONES: Record<ExitSlot, Rect> = {
+  north: { x: GAP_LO * TILE, y: 0, w: 2 * TILE, h: 2 * TILE },
+  south: { x: GAP_LO * TILE, y: 13 * TILE, w: 2 * TILE, h: TILE },
+  west: { x: 0, y: GAP_LO * TILE, w: TILE, h: 2 * TILE },
+  east: { x: 13 * TILE, y: GAP_LO * TILE, w: TILE, h: 2 * TILE },
+  up: { x: 11 * TILE, y: 2 * TILE, w: TILE, h: TILE },
+  down: { x: 2 * TILE, y: 11 * TILE, w: TILE, h: TILE },
+};
+
+// tile-aligned candidates in the floor area, clear of door lanes (cols/rows
+// 6-7), the ladder (11,2), the trapdoor (2,11), and the fountain basin (2,2)
+const SUSPECT_TILES: [number, number][] = [
+  [2, 4], [11, 9], [3, 10], [10, 3], [4, 4], [9, 11],
+];
+const PROP_TILES: [number, number][] = [
+  [3, 3], [10, 10], [11, 5], [1, 9], [5, 3], [8, 11],
+];
+const PROP_SPRS: Spr[] = [
+  SPR.crate, SPR.skull, SPR.flaskRed, SPR.chestOpen, SPR.flaskBlue, SPR.crate,
+];
+const FLOOR_VARIANTS: Spr[] = [SPR.floor2, SPR.floor3, SPR.floor4, SPR.floor7];
+
+export function buildLayout(
+  cellKey: string,
+  trackHash: number,
+  exits: CellExit[] | undefined,
+): Layout {
+  const hasDoor = (slot: ExitSlot) =>
+    exits?.some((e) => e.kind === "door" && e.slot === slot) ?? false;
+  const h = hashKey(cellKey);
+  const tiles: TilePlace[] = [];
+
+  // floor variation patches (floor area rows 2..12, cols 1..12)
+  for (let i = 0; i < 5; i++) {
+    tiles.push({
+      col: 1 + ((trackHash >> (i * 3)) % 12),
+      row: 2 + ((trackHash >> (i * 3 + 7)) % 11),
+      spr: FLOOR_VARIANTS[(trackHash >> i) % FLOOR_VARIANTS.length],
+    });
+  }
+
+  // top wall (cap row 0 + face row 1) and bottom wall (cap row 13)
+  for (let c = 1; c < GRID - 1; c++) {
+    const inGap = c === GAP_LO || c === GAP_HI;
+    if (!(inGap && hasDoor("north"))) {
+      tiles.push({ col: c, row: 0, spr: SPR.wallTopMid });
+      tiles.push({ col: c, row: 1, spr: SPR.wallMid });
+    }
+    if (!(inGap && hasDoor("south")))
+      tiles.push({ col: c, row: 13, spr: SPR.wallTopMid });
+  }
+  // side walls
+  for (let r = 2; r < GRID - 1; r++) {
+    const inGap = r === GAP_LO || r === GAP_HI;
+    // 0x72 naming: "left/right" is the side of the doorway the piece caps,
+    // so the room's left wall uses wall_side_mid_RIGHT and vice versa
+    if (!(inGap && hasDoor("west")))
+      tiles.push({ col: 0, row: r, spr: SPR.wallSideMidRight });
+    if (!(inGap && hasDoor("east")))
+      tiles.push({ col: 13, row: r, spr: SPR.wallSideMidLeft });
+  }
+  // terminate the cut wall ends around door gaps so each opening reads as an
+  // intentional passage (front/top caps for side walls, end caps for the
+  // bottom strip)
+  if (hasDoor("west")) {
+    tiles.push(
+      { col: 0, row: GAP_LO - 1, spr: SPR.wallSideFrontRight },
+      { col: 0, row: GAP_HI + 1, spr: SPR.wallSideTopRight },
+    );
+  }
+  if (hasDoor("east")) {
+    tiles.push(
+      { col: 13, row: GAP_LO - 1, spr: SPR.wallSideFrontLeft },
+      { col: 13, row: GAP_HI + 1, spr: SPR.wallSideTopLeft },
+    );
+  }
+  if (hasDoor("south")) {
+    tiles.push(
+      { col: GAP_LO - 1, row: 13, spr: SPR.wallTopRight },
+      { col: GAP_HI + 1, row: 13, spr: SPR.wallTopLeft },
+    );
+  }
+  // corners
+  tiles.push(
+    { col: 0, row: 0, spr: SPR.cornerTopLeft },
+    { col: 13, row: 0, spr: SPR.cornerTopRight },
+    { col: 0, row: 1, spr: SPR.cornerLeft },
+    { col: 13, row: 1, spr: SPR.cornerRight },
+    { col: 0, row: 13, spr: SPR.cornerBottomLeft },
+    { col: 13, row: 13, spr: SPR.cornerBottomRight },
+  );
+
+  // wall dressing on the face row: fountain top (animated parts are DOM),
+  // plus hash-picked column or goo
+  const fountainCol = 2;
+  tiles.push({ col: fountainCol, row: 0, spr: SPR.fountainTop });
+  if (h % 2) {
+    tiles.push(
+      { col: 12, row: 0, spr: SPR.wallColumnTop },
+      { col: 12, row: 1, spr: SPR.wallColumnMid },
+    );
+  } else {
+    tiles.push(
+      { col: 10, row: 1, spr: SPR.wallGoo },
+      { col: 10, row: 2, spr: SPR.wallGooBase },
+    );
+  }
+
+  // archways: south/east/west are dark passages leading out of the room,
+  // each shaded toward its own direction. Only north — the far wall, the one
+  // facing the camera — gets the native face-on door assembly.
+  const archways: Layout["archways"] = [];
+  if (hasDoor("south")) archways.push({ slot: "south", rect: ZONES.south });
+  if (hasDoor("west")) archways.push({ slot: "west", rect: ZONES.west });
+  if (hasDoor("east")) archways.push({ slot: "east", rect: ZONES.east });
+
+  // sealed marks for wall slots without doors
+  const sealed: Layout["sealed"] = (
+    ["north", "east", "south", "west"] as ExitSlot[]
+  )
+    .filter((s) => !hasDoor(s))
+    .map((slot) => {
+      const z = ZONES[slot];
+      return { slot, x: z.x + z.w / 2, y: z.y + z.h / 2 };
+    });
+
+  const props: TilePlace[] = Array.from(
+    { length: 2 + (trackHash % 3) },
+    (_, i) => {
+      const pick = (trackHash + i * 5) % PROP_TILES.length; // 5 ⟂ 6: distinct
+      const [col, row] = PROP_TILES[pick];
+      return { col, row, spr: PROP_SPRS[pick] };
+    },
+  );
+
+  return {
+    tiles,
+    archways,
+    northDoor: hasDoor("north"),
+    bannerCols: [4, 9],
+    fountainCol,
+    suspectSpots: SUSPECT_TILES.map(([c, r]) => ({ x: c * TILE, y: r * TILE })),
+    props,
+    sealed,
+    bounds: {
+      minX: TILE,
+      minY: 2 * TILE,
+      maxX: 13 * TILE,
+      maxY: 13 * TILE,
+    },
+  };
+}
+
+if (import.meta.env.DEV) {
+  const door = (slot: ExitSlot): CellExit => ({
+    kind: "door", slot, toKey: slot, toTitle: slot, score: 0.9, label: "",
+  });
+  const L = buildLayout("0,0,0", 12345, [door("north"), door("east"), door("south")]);
+  const wallAt = (col: number, row: number) =>
+    L.tiles.some((t) => t.col === col && t.row === row &&
+      [SPR.wallTopMid, SPR.wallMid, SPR.wallSideMidLeft, SPR.wallSideMidRight].includes(t.spr));
+  console.assert(
+    !wallAt(6, 0) && !wallAt(7, 1) && // north gap punched through both rows
+      !wallAt(13, 6) && !wallAt(13, 7) && // east gap punched
+      !wallAt(6, 13) && wallAt(0, 6) && // south punched, west stays walled
+      L.archways.length === 2 &&
+      L.archways.map((a) => a.slot).join() === "south,east" &&
+      L.northDoor && L.sealed.length === 1 && L.sealed[0].slot === "west",
+    "buildLayout smoke check failed", L,
+  );
+}

@@ -1,0 +1,15 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# test artifacts
+.playwright-mcp/
+
+# os / editor
+.DS_Store
+.claude/
