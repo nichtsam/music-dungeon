@@ -1,12 +1,12 @@
 // FLOOR MAP — fullscreen 2D plan of one floor (the minimap, grown up).
-// PageUp/PageDown or the arrows switch between explored floors.
+// ArrowUp/ArrowDown switches between explored floors.
 // Drag pans, wheel zooms, double-click recenters.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor } from "../theme";
 
 const CELL = 48;
-const STEP = 72;
+const STEP = 200;
 
 // 2D pan/zoom (no rotation — plain drag pans)
 function usePanZoom() {
@@ -75,8 +75,8 @@ export default function FloorMap() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const i = floors.indexOf(floor);
-      if (e.key === "PageUp" && i > 0) setFloor(floors[i - 1]);
-      if (e.key === "PageDown" && i < floors.length - 1) setFloor(floors[i + 1]);
+      if (e.key === "ArrowUp" && i > 0) { e.preventDefault(); setFloor(floors[i - 1]); }
+      if (e.key === "ArrowDown" && i < floors.length - 1) { e.preventDefault(); setFloor(floors[i + 1]); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -87,6 +87,9 @@ export default function FloorMap() {
   const xs = onFloor.map((k) => cells[k].pos[0]);
   const ys = onFloor.map((k) => cells[k].pos[1]);
   const minX = Math.min(...xs), minY = Math.min(...ys);
+  const PAD_X = (STEP - CELL) / 2;       // center cell horizontally in STEP slot (label width = STEP)
+  const LABEL_H = 4 + 20 * 1.3 * 2;      // marginTop + 2 lines @ fontSize 20
+  const OFFSET_Y = (STEP - CELL - LABEL_H) / 2; // center cell+label vertically in STEP slot
   const w = (Math.max(...xs) - minX + 1) * STEP;
   const h = (Math.max(...ys) - minY + 1) * STEP;
 
@@ -111,8 +114,8 @@ export default function FloorMap() {
           const track = tracks[cell.trackId];
           const [x, y] = cell.pos;
           const pal = paletteFor(track?.models);
-          const left = (x - minX) * STEP;
-          const top = (y - minY) * STEP;
+          const left = (x - minX) * STEP + PAD_X;
+          const top = (y - minY) * STEP + OFFSET_Y;
           const hasSecret = (discovered[k] ?? []).length > 0;
           return (
             <div key={k}>
@@ -162,8 +165,13 @@ export default function FloorMap() {
                     left: "50%",
                     transform: "translateX(-50%)",
                     marginTop: 4,
-                    fontSize: 13,
-                    whiteSpace: "nowrap",
+                    fontSize: 20,
+                    width: STEP,
+                    textAlign: "center",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
                     color: pal.accent,
                     textShadow: "0 1px 3px #000",
                   }}
@@ -204,7 +212,7 @@ export default function FloorMap() {
             {f >= 0 ? `+${f}` : f}
           </button>
         ))}
-        <span style={{ opacity: 0.5, fontSize: 13 }}>PgUp / PgDn</span>
+        <span style={{ opacity: 0.5, fontSize: 13 }}>↑ / ↓</span>
       </div>
       <div style={{ position: "absolute", top: 62, left: 16, fontSize: 15, opacity: 0.8, pointerEvents: "none", lineHeight: 1.7 }}>
         🗺 FLOOR MAP — floor {floor >= 0 ? `+${floor}` : floor}
