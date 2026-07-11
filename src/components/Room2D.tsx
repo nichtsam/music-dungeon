@@ -1,4 +1,4 @@
-// Top-down dungeon room, rendered strictly on the 14x14 tile grid via
+// Top-down dungeon room, rendered on the 42x42 tile grid via
 // roomLayout.ts (single source of geometry). Unified interaction model:
 // walk into range, [SPACE] prompt appears, Space triggers. Nothing auto-fires.
 // Secret passages hide behind cracked-floor suspect spots — some are decoys.
@@ -7,23 +7,26 @@ import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import { SPR, TILE, spriteStyle, tilePattern, type Spr } from "../sprites";
 import { hashKey, type CellExit, type ExitSlot } from "../dungeon";
-import { buildLayout, ZONES, ROOM_PX, type Rect } from "../roomLayout";
+import { buildLayout, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
 
-const SIZE = ROOM_PX; // 672
+// ponytail: SIZE is the viewport reference (14 tiles), kept separate from ROOM_PX (42 tiles)
+const SIZE = 14 * TILE; // 672 — viewport window, unchanged for zoom
 const CHAR = 34; // collision box (feet)
 const SPEED = 250; // px/s
 const TRANSITION_MS = 350;
 const INTERACT_PAD = 26;
 
-// where the character appears after leaving through `slot`
+const GAP_HI = 21; // mirror of roomLayout GAP_HI for spawn math
+
+// where the character appears after entering through `slot`
 const SPAWN: Record<CellExit["slot"], { x: number; y: number }> = {
-  north: { x: 7 * TILE - CHAR / 2, y: 12 * TILE - CHAR - 8 },
-  south: { x: 7 * TILE - CHAR / 2, y: 2 * TILE + 8 },
-  west: { x: 12 * TILE - CHAR - 8, y: 7 * TILE - CHAR / 2 },
-  east: { x: TILE + 8, y: 7 * TILE - CHAR / 2 },
-  up: { x: 7 * TILE - CHAR / 2, y: 9 * TILE },
-  down: { x: 7 * TILE - CHAR / 2, y: 9 * TILE },
-  portal: { x: 7 * TILE - CHAR / 2, y: 9 * TILE },
+  north:  { x: GAP_HI * TILE - CHAR / 2, y: (GRID - 2) * TILE - CHAR - 8 },
+  south:  { x: GAP_HI * TILE - CHAR / 2, y: 2 * TILE + 8 },
+  west:   { x: (GRID - 2) * TILE - CHAR - 8, y: GAP_HI * TILE - CHAR / 2 },
+  east:   { x: TILE + 8, y: GAP_HI * TILE - CHAR / 2 },
+  up:     { x: (GRID / 2) * TILE - CHAR / 2, y: Math.round(GRID * 0.64) * TILE },
+  down:   { x: (GRID / 2) * TILE - CHAR / 2, y: Math.round(GRID * 0.64) * TILE },
+  portal: { x: (GRID / 2) * TILE - CHAR / 2, y: Math.round(GRID * 0.64) * TILE },
 };
 
 const ENTER_DELTA: Record<CellExit["slot"], [number, number]> = {
@@ -78,22 +81,28 @@ function useTilePattern(spr: Spr): string | null {
   return url;
 }
 
-// fit the fixed-size room into the actual container (ResizeObserver so
-// window managers that resize without events still trigger re-measure)
-function useRoomScale(ref: React.RefObject<HTMLDivElement | null>): number {
+// Compute scale so 14 tiles (SIZE=672) fit the viewport — same tile size as before.
+// Also writes viewport dimensions into viewportRef for the camera RAF loop.
+function useRoomScale(
+  ref: React.RefObject<HTMLDivElement | null>,
+  viewportRef: React.RefObject<{ w: number; h: number }>,
+): number {
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () =>
-      setScale(
-        Math.min(1, (el.clientWidth - 32) / SIZE, (el.clientHeight - 90) / SIZE),
-      );
+    const measure = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      viewportRef.current.w = w;
+      viewportRef.current.h = h;
+      setScale(Math.min(1, (w - 32) / SIZE, (h - 90) / SIZE));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
+  }, [ref, viewportRef]);
   return scale;
 }
 
@@ -114,7 +123,10 @@ export default function Room2D() {
   const track = cell ? tracks[cell.trackId] : null;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const scale = useRoomScale(containerRef);
+  const cameraRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef(1);
+  const viewportRef = useRef({ w: 0, h: 0 });
+  const scale = useRoomScale(containerRef, viewportRef);
   const floorUrl = useTilePattern(SPR.floor1);
 
   const charRef = useRef<HTMLDivElement>(null);
@@ -289,8 +301,8 @@ export default function Room2D() {
         if (held.has("down")) p.y += SPEED * dt;
         if (held.has("left")) p.x -= SPEED * dt;
         if (held.has("right")) p.x += SPEED * dt;
-        p.x = Math.max(TILE, Math.min(13 * TILE - CHAR, p.x));
-        p.y = Math.max(2 * TILE, Math.min(13 * TILE - CHAR, p.y));
+        p.x = Math.max(TILE, Math.min((GRID - 1) * TILE - CHAR, p.x));
+        p.y = Math.max(2 * TILE, Math.min((GRID - 1) * TILE - CHAR, p.y));
       }
       // nearest interactable within padded range gets focus; Space acts on it
       let best: Interactable | null = null;
@@ -319,6 +331,18 @@ export default function Room2D() {
         if (held.has("left")) el.classList.add("face-left");
         else if (held.has("right")) el.classList.remove("face-left");
       }
+      const cam = cameraRef.current;
+      if (cam) {
+        const sc = scaleRef.current;
+        const { w: vw, h: vh } = viewportRef.current;
+        const cx = vw / 2 - (p.x + CHAR / 2) * sc;
+        const cy = vh / 2 - (p.y + CHAR / 2) * sc;
+        cam.style.transform = `translate(${
+          Math.max(vw - ROOM_PX * sc, Math.min(0, cx))
+        }px, ${
+          Math.max(vh - ROOM_PX * sc, Math.min(0, cy))
+        }px)`;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -330,6 +354,7 @@ export default function Room2D() {
   }, []);
 
   if (!cell || !track || !layout) return null;
+  scaleRef.current = scale; // keep RAF closure fresh without re-subscribing
   const pal = paletteFor(track.models);
   const mood = topMood(track.models);
   const pulseSec = track.models?.bpm ? (60 / track.models.bpm) * 4 : 3;
@@ -342,21 +367,21 @@ export default function Room2D() {
       ref={containerRef}
       style={{
         height: "100%",
-        display: "grid",
-        placeItems: "center",
+        overflow: "hidden",
+        position: "relative",
         background: `radial-gradient(ellipse at center, ${pal.wall}, #0c0a14 85%)`,
         transition: "background 0.6s",
       }}
     >
-      <div style={{ width: SIZE * scale, height: SIZE * scale }}>
+      <div ref={cameraRef} style={{ position: "absolute", willChange: "transform" }}>
       <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
       <div
         key={currentKey}
         className="room"
         style={
           {
-            width: SIZE,
-            height: SIZE,
+            width: ROOM_PX,
+            height: ROOM_PX,
             position: "relative",
             backgroundImage: floorUrl ? `url(${floorUrl})` : undefined,
             backgroundColor: floorUrl ? undefined : "#3b3147",
@@ -516,7 +541,7 @@ export default function Room2D() {
           <div
             style={{
               position: "absolute",
-              left: Math.max(80, Math.min(SIZE - 80, focus.rect.x + focus.rect.w / 2)),
+              left: focus.rect.x + focus.rect.w / 2,
               top: Math.max(6, focus.rect.y - 42),
               transform: "translateX(-50%)",
               background: "#0c0a14ee",
@@ -541,21 +566,21 @@ export default function Room2D() {
         <div ref={charRef} className="char" style={{ position: "absolute", top: 0, left: 0, width: CHAR, height: CHAR, willChange: "transform", zIndex: 3 }}>
           <div className="wiz" style={{ position: "absolute", left: -7, bottom: 0 }} />
         </div>
+      </div>
+      </div>
+      </div>
 
-        {/* toast + floor flourish */}
-        {toast && (
-          <div className="toast" style={{ position: "absolute", bottom: TILE + 14, left: "50%", transform: "translateX(-50%)", background: "#0c0a14ee", border: "1px solid #5a4a8a", borderRadius: 4, padding: "6px 14px", fontSize: 17, whiteSpace: "nowrap", zIndex: 4 }}>
-            {toast}
-          </div>
-        )}
-        {flourish && (
-          <div className="flourish" style={{ position: "absolute", top: "42%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 44, fontWeight: 800, letterSpacing: 6, color: pal.accent, textShadow: `0 0 30px ${pal.glow}`, zIndex: 5, pointerEvents: "none" }}>
-            {flourish}
-          </div>
-        )}
-      </div>
-      </div>
-      </div>
+      {/* toast + floor flourish: viewport-space so camera follow doesn't displace them */}
+      {toast && (
+        <div className="toast" style={{ position: "absolute", bottom: TILE + 14, left: "50%", transform: "translateX(-50%)", background: "#0c0a14ee", border: "1px solid #5a4a8a", borderRadius: 4, padding: "6px 14px", fontSize: 17, whiteSpace: "nowrap", zIndex: 4 }}>
+          {toast}
+        </div>
+      )}
+      {flourish && (
+        <div className="flourish" style={{ position: "absolute", top: "42%", left: "50%", transform: "translate(-50%,-50%)", fontSize: 44, fontWeight: 800, letterSpacing: 6, color: pal.accent, textShadow: `0 0 30px ${pal.glow}`, zIndex: 5, pointerEvents: "none" }}>
+          {flourish}
+        </div>
+      )}
 
       <div style={{ position: "absolute", top: 16, left: 16, fontSize: 15, opacity: 0.75, lineHeight: 1.7, letterSpacing: 0.5 }}>
         ⛏ rooms explored: {visitedKeys.length} · floor {floor >= 0 ? `+${floor}` : floor}

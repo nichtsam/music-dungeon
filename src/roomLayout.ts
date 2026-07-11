@@ -5,8 +5,8 @@
 import { SPR, TILE, type Spr } from "./sprites";
 import { hashKey, type CellExit, type ExitSlot } from "./dungeon";
 
-export const GRID = 14;
-export const ROOM_PX = GRID * TILE; // 672
+export const GRID = 42;
+export const ROOM_PX = GRID * TILE; // 2016
 
 export interface TilePlace {
   col: number;
@@ -33,27 +33,28 @@ export interface Layout {
   bounds: { minX: number; minY: number; maxX: number; maxY: number }; // char area edges
 }
 
-// door gap lanes: cols 6-7 (north/south), rows 6-7 (east/west)
-const GAP_LO = 6;
-const GAP_HI = 7;
+// door gap lanes: cols 20-21 (north/south), rows 20-21 (east/west) — center of 42-tile grid
+const GAP_LO = 20;
+const GAP_HI = 21;
 
 // interaction zones per exit slot (pixel) — derived from the same grid
 export const ZONES: Record<ExitSlot, Rect> = {
   north: { x: GAP_LO * TILE, y: 0, w: 2 * TILE, h: 2 * TILE },
-  south: { x: GAP_LO * TILE, y: 13 * TILE, w: 2 * TILE, h: TILE },
+  south: { x: GAP_LO * TILE, y: (GRID - 1) * TILE, w: 2 * TILE, h: TILE },
   west: { x: 0, y: GAP_LO * TILE, w: TILE, h: 2 * TILE },
-  east: { x: 13 * TILE, y: GAP_LO * TILE, w: TILE, h: 2 * TILE },
+  east: { x: (GRID - 1) * TILE, y: GAP_LO * TILE, w: TILE, h: 2 * TILE },
   up: { x: 11 * TILE, y: 2 * TILE, w: TILE, h: TILE },
   down: { x: 2 * TILE, y: 11 * TILE, w: TILE, h: TILE },
 };
 
 // tile-aligned candidates in the floor area, clear of door lanes (cols/rows
-// 6-7), the ladder (11,2), the trapdoor (2,11), and the fountain basin (2,2)
+// 20-21), the ladder (11,2), the trapdoor (2,11), and the fountain basin (2,2)
 const SUSPECT_TILES: [number, number][] = [
-  [2, 4], [11, 9], [3, 10], [10, 3], [4, 4], [9, 11],
+  [4, 8], [20, 15], [8, 30], [35, 10], [12, 38], [30, 20],
+  [16, 5], [38, 35], [6, 22], [28, 38],
 ];
 const PROP_TILES: [number, number][] = [
-  [3, 3], [10, 10], [11, 5], [1, 9], [5, 3], [8, 11],
+  [6, 6], [36, 36], [36, 10], [4, 32], [10, 6], [32, 36],
 ];
 const PROP_SPRS: Spr[] = [
   SPR.crate, SPR.skull, SPR.flaskRed, SPR.chestOpen, SPR.flaskBlue, SPR.crate,
@@ -70,11 +71,11 @@ export function buildLayout(
   const h = hashKey(cellKey);
   const tiles: TilePlace[] = [];
 
-  // floor variation patches (floor area rows 2..12, cols 1..12)
-  for (let i = 0; i < 5; i++) {
+  // floor variation patches (floor area rows 2..40, cols 1..40)
+  for (let i = 0; i < 20; i++) {
     tiles.push({
-      col: 1 + ((trackHash >> (i * 3)) % 12),
-      row: 2 + ((trackHash >> (i * 3 + 7)) % 11),
+      col: 1 + ((trackHash >> (i * 3)) % 40),
+      row: 2 + ((trackHash >> (i * 3 + 7)) % 38),
       spr: FLOOR_VARIANTS[(trackHash >> i) % FLOOR_VARIANTS.length],
     });
   }
@@ -87,7 +88,7 @@ export function buildLayout(
       tiles.push({ col: c, row: 1, spr: SPR.wallMid });
     }
     if (!(inGap && hasDoor("south")))
-      tiles.push({ col: c, row: 13, spr: SPR.wallTopMid });
+      tiles.push({ col: c, row: GRID - 1, spr: SPR.wallTopMid });
   }
   // side walls
   for (let r = 2; r < GRID - 1; r++) {
@@ -97,7 +98,7 @@ export function buildLayout(
     if (!(inGap && hasDoor("west")))
       tiles.push({ col: 0, row: r, spr: SPR.wallSideMidRight });
     if (!(inGap && hasDoor("east")))
-      tiles.push({ col: 13, row: r, spr: SPR.wallSideMidLeft });
+      tiles.push({ col: GRID - 1, row: r, spr: SPR.wallSideMidLeft });
   }
   // terminate the cut wall ends around door gaps so each opening reads as an
   // intentional passage (front/top caps for side walls, end caps for the
@@ -110,24 +111,24 @@ export function buildLayout(
   }
   if (hasDoor("east")) {
     tiles.push(
-      { col: 13, row: GAP_LO - 1, spr: SPR.wallSideFrontLeft },
-      { col: 13, row: GAP_HI + 1, spr: SPR.wallSideTopLeft },
+      { col: GRID - 1, row: GAP_LO - 1, spr: SPR.wallSideFrontLeft },
+      { col: GRID - 1, row: GAP_HI + 1, spr: SPR.wallSideTopLeft },
     );
   }
   if (hasDoor("south")) {
     tiles.push(
-      { col: GAP_LO - 1, row: 13, spr: SPR.wallTopRight },
-      { col: GAP_HI + 1, row: 13, spr: SPR.wallTopLeft },
+      { col: GAP_LO - 1, row: GRID - 1, spr: SPR.wallTopRight },
+      { col: GAP_HI + 1, row: GRID - 1, spr: SPR.wallTopLeft },
     );
   }
   // corners
   tiles.push(
     { col: 0, row: 0, spr: SPR.cornerTopLeft },
-    { col: 13, row: 0, spr: SPR.cornerTopRight },
+    { col: GRID - 1, row: 0, spr: SPR.cornerTopRight },
     { col: 0, row: 1, spr: SPR.cornerLeft },
-    { col: 13, row: 1, spr: SPR.cornerRight },
-    { col: 0, row: 13, spr: SPR.cornerBottomLeft },
-    { col: 13, row: 13, spr: SPR.cornerBottomRight },
+    { col: GRID - 1, row: 1, spr: SPR.cornerRight },
+    { col: 0, row: GRID - 1, spr: SPR.cornerBottomLeft },
+    { col: GRID - 1, row: GRID - 1, spr: SPR.cornerBottomRight },
   );
 
   // wall dressing on the face row: fountain top (animated parts are DOM),
@@ -136,8 +137,8 @@ export function buildLayout(
   tiles.push({ col: fountainCol, row: 0, spr: SPR.fountainTop });
   if (h % 2) {
     tiles.push(
-      { col: 12, row: 0, spr: SPR.wallColumnTop },
-      { col: 12, row: 1, spr: SPR.wallColumnMid },
+      { col: GRID - 2, row: 0, spr: SPR.wallColumnTop },
+      { col: GRID - 2, row: 1, spr: SPR.wallColumnMid },
     );
   } else {
     tiles.push(
@@ -177,7 +178,7 @@ export function buildLayout(
     tiles,
     archways,
     northDoor: hasDoor("north"),
-    bannerCols: [4, 9],
+    bannerCols: [4, 9, 14, 19, 24, 29, 34, 39],
     fountainCol,
     suspectSpots: SUSPECT_TILES.map(([c, r]) => ({ x: c * TILE, y: r * TILE })),
     props,
@@ -185,8 +186,8 @@ export function buildLayout(
     bounds: {
       minX: TILE,
       minY: 2 * TILE,
-      maxX: 13 * TILE,
-      maxY: 13 * TILE,
+      maxX: (GRID - 1) * TILE,
+      maxY: (GRID - 1) * TILE,
     },
   };
 }
@@ -200,9 +201,9 @@ if (import.meta.env.DEV) {
     L.tiles.some((t) => t.col === col && t.row === row &&
       [SPR.wallTopMid, SPR.wallMid, SPR.wallSideMidLeft, SPR.wallSideMidRight].includes(t.spr));
   console.assert(
-    !wallAt(6, 0) && !wallAt(7, 1) && // north gap punched through both rows
-      !wallAt(13, 6) && !wallAt(13, 7) && // east gap punched
-      !wallAt(6, 13) && wallAt(0, 6) && // south punched, west stays walled
+    !wallAt(20, 0) && !wallAt(21, 1) && // north gap punched through both rows
+      !wallAt(41, 20) && !wallAt(41, 21) && // east gap punched
+      !wallAt(20, 41) && wallAt(0, 20) && // south punched, west stays walled
       L.archways.length === 2 &&
       L.archways.map((a) => a.slot).join() === "south,east" &&
       L.northDoor && L.sealed.length === 1 && L.sealed[0].slot === "west",
