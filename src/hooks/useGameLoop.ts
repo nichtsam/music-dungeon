@@ -44,6 +44,7 @@ export function useGameLoop<T extends Focusable>({
   useEffect(() => {
     const held = new Set<string>();
     const down = (e: KeyboardEvent) => {
+      if (e.key === "Shift") { held.add("sprint"); return; }
       if (e.key === " ") {
         e.preventDefault();
         if (useDungeon.getState().view === "dungeon") interactRef.current();
@@ -52,7 +53,10 @@ export function useGameLoop<T extends Focusable>({
       const dir = KEYMAP[e.key];
       if (dir) { held.add(dir); e.preventDefault(); }
     };
-    const up = (e: KeyboardEvent) => held.delete(KEYMAP[e.key]);
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Shift") { held.delete("sprint"); return; }
+      held.delete(KEYMAP[e.key]);
+    };
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
 
@@ -70,10 +74,11 @@ export function useGameLoop<T extends Focusable>({
       const p = pos.current;
       const moving = held.size > 0 && !leavingRef.current;
       if (moving) {
-        if (held.has("up")) p.y -= SPEED * dt;
-        if (held.has("down")) p.y += SPEED * dt;
-        if (held.has("left")) p.x -= SPEED * dt;
-        if (held.has("right")) p.x += SPEED * dt;
+        const spd = held.has("sprint") ? SPEED * 2 : SPEED;
+        if (held.has("up")) p.y -= spd * dt;
+        if (held.has("down")) p.y += spd * dt;
+        if (held.has("left")) p.x -= spd * dt;
+        if (held.has("right")) p.x += spd * dt;
         p.x = Math.max(TILE, Math.min((GRID - 1) * TILE - CHAR, p.x));
         p.y = Math.max(2 * TILE, Math.min((GRID - 1) * TILE - CHAR, p.y));
       }

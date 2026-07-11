@@ -2,7 +2,7 @@
 // roomLayout.ts (single source of geometry). Unified interaction model:
 // walk into range, [SPACE] prompt appears, Space triggers. Nothing auto-fires.
 // Secret passages hide behind cracked-floor suspect spots — some are decoys.
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import { SPR, TILE, spriteStyle } from "../sprites";
@@ -104,6 +104,13 @@ export default function Room2D() {
   const floor = cell?.pos[2] ?? 0;
   const flourish = useFloorFlourish(floor);
   useDwellTracker(currentKey);
+
+  const [showInfo, setShowInfo] = useState(true);
+  useEffect(() => {
+    setShowInfo(true);
+    const t = setTimeout(() => setShowInfo(false), 3000);
+    return () => clearTimeout(t);
+  }, [currentKey]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -306,36 +313,6 @@ export default function Room2D() {
         {/* vignette */}
         <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 80px #000000a0", pointerEvents: "none", zIndex: 1 }} />
 
-        {/* track info card — over the top wall, grid-aligned */}
-        <div
-          style={{
-            position: "absolute",
-            top: 2 * TILE + 6,
-            left: "50%",
-            transform: "translateX(-50%)",
-            textAlign: "center",
-            pointerEvents: "none",
-            maxWidth: "66%",
-            zIndex: 3,
-            background: "#0c0a14f5",
-            border: `2px solid ${pal.glow}80`,
-            borderRadius: 4,
-            padding: "6px 14px",
-            boxShadow: `0 0 20px ${pal.glow}30`,
-          }}
-        >
-          <div style={{ fontSize: 21, fontWeight: 700, color: pal.accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            🎵 {track.title}
-          </div>
-          <div style={{ fontSize: 15, opacity: 0.75 }}>
-            {mood && `${mood} · `}
-            {track.models?.genre && `${track.models.genre} · `}
-            {track.models?.bpm && `${track.models.bpm} BPM`}
-          </div>
-          {loading && <div style={{ fontSize: 14, opacity: 0.5 }}>carving out exits…</div>}
-          {error && <div style={{ fontSize: 14, color: "#ff8080" }}>{error}</div>}
-        </div>
-
         {/* exits: north = native 2x2 wooden door; S/E/W = archway zones;
             up = ladder tile; down = hole tile. All grid-placed via ZONES. */}
         {doorExits.map((ex) => (
@@ -385,12 +362,6 @@ export default function Room2D() {
           );
         })}
 
-        {/* sealed walls: cobwebs, grid-centered on the missing gap */}
-        {layout.sealed.map((s) => (
-          <div key={s.slot} style={{ position: "absolute", left: s.x - 12, top: s.y - 12, width: 24, height: 24, display: "grid", placeItems: "center", opacity: 0.4, fontSize: 14, zIndex: 1 }} title="sealed — the dungeon offers no exit here">
-            🕸
-          </div>
-        ))}
 
         {/* interaction prompt chip */}
         {focus && !leaving && (
@@ -438,10 +409,42 @@ export default function Room2D() {
         </div>
       )}
 
+      {/* track info card — viewport-space, fades after 3s */}
+      <div
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          textAlign: "center",
+          pointerEvents: "none",
+          maxWidth: "60%",
+          zIndex: 4,
+          background: "#0c0a14f5",
+          border: `2px solid ${pal.glow}80`,
+          borderRadius: 4,
+          padding: "6px 14px",
+          boxShadow: `0 0 20px ${pal.glow}30`,
+          opacity: showInfo ? 1 : 0,
+          transition: "opacity 0.6s",
+        }}
+      >
+        <div style={{ fontSize: 21, fontWeight: 700, color: pal.accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          🎵 {track.title}
+        </div>
+        <div style={{ fontSize: 15, opacity: 0.75 }}>
+          {mood && `${mood} · `}
+          {track.models?.genre && `${track.models.genre} · `}
+          {track.models?.bpm && `${track.models.bpm} BPM`}
+        </div>
+        {loading && <div style={{ fontSize: 14, opacity: 0.5 }}>carving out exits…</div>}
+        {error && <div style={{ fontSize: 14, color: "#ff8080" }}>{error}</div>}
+      </div>
+
       <div style={{ position: "absolute", top: 16, left: 16, fontSize: 15, opacity: 0.75, lineHeight: 1.7, letterSpacing: 0.5 }}>
         ⛏ rooms explored: {visitedKeys.length} · floor {floor >= 0 ? `+${floor}` : floor}
         <br />
-        WASD / arrows move · SPACE interact · Tab map
+        WASD / arrows move · Shift sprint · SPACE interact · Tab map
       </div>
       <button
         onClick={reset}
