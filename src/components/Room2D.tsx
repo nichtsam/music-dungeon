@@ -2,21 +2,20 @@
 // roomLayout.ts (single source of geometry). Unified interaction model:
 // walk into range, [SPACE] prompt appears, Space triggers. Nothing auto-fires.
 // Secret passages hide behind cracked-floor suspect spots — some are decoys.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
-import { SPR, TILE, spriteStyle, tilePattern, type Spr } from "../sprites";
+import { SPR, TILE, spriteStyle } from "../sprites";
 import { hashKey, type CellExit, type ExitSlot } from "../dungeon";
-import { buildLayout, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
+import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
+import { useGameLoop, CHAR } from "../hooks/useGameLoop";
+import { useDwellTracker } from "../hooks/useDwellTracker";
+import { useFloorFlourish } from "../hooks/useFloorFlourish";
+import { useRoomScale } from "../hooks/useRoomScale";
+import { useTilePattern } from "../hooks/useTilePattern";
 
 // ponytail: SIZE is the viewport reference (14 tiles), kept separate from ROOM_PX (42 tiles)
-const SIZE = 14 * TILE; // 672 — viewport window, unchanged for zoom
-const CHAR = 34; // collision box (feet)
-const SPEED = 250; // px/s
 const TRANSITION_MS = 350;
-const INTERACT_PAD = 26;
-
-const GAP_HI = 21; // mirror of roomLayout GAP_HI for spawn math
 
 // where the character appears after entering through `slot`
 const SPAWN: Record<CellExit["slot"], { x: number; y: number }> = {
@@ -32,11 +31,6 @@ const SPAWN: Record<CellExit["slot"], { x: number; y: number }> = {
 const ENTER_DELTA: Record<CellExit["slot"], [number, number]> = {
   north: [0, -60], south: [0, 60], east: [60, 0], west: [-60, 0],
   up: [0, -100], down: [0, 100], portal: [0, 0],
-};
-
-const KEYMAP: Record<string, string> = {
-  ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
-  w: "up", s: "down", a: "left", d: "right",
 };
 
 // --- suspect spots (hidden-passage candidates + decoys) ----------------------
@@ -75,39 +69,8 @@ const EXIT_VERB: Record<string, string> = {
   portal: "enter the secret passage",
 };
 
-function useTilePattern(spr: Spr): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-  useEffect(() => tilePattern(spr, setUrl), [spr]);
-  return url;
-}
-
-// Compute scale so 14 tiles (SIZE=672) fit the viewport — same tile size as before.
-// Also writes viewport dimensions into viewportRef for the camera RAF loop.
-function useRoomScale(
-  ref: React.RefObject<HTMLDivElement | null>,
-  viewportRef: React.RefObject<{ w: number; h: number }>,
-): number {
-  const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const measure = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      viewportRef.current.w = w;
-      viewportRef.current.h = h;
-      setScale(Math.min(1, (w - 32) / SIZE, (h - 90) / SIZE));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [ref, viewportRef]);
-  return scale;
-}
-
 const WARM_MOODS = new Set(["happy", "aggressive", "energetic", "romantic", "sexy", "uplifting"]);
-const BANNER_BY_MOOD: Record<string, Spr> = {
+const BANNER_BY_MOOD: Record<string, (typeof SPR)[keyof typeof SPR]> = {
   aggressive: SPR.bannerRed, energetic: SPR.bannerRed,
   calm: SPR.bannerBlue, sad: SPR.bannerBlue, ethereal: SPR.bannerBlue,
   happy: SPR.bannerYellow, uplifting: SPR.bannerYellow,
@@ -136,45 +99,17 @@ export default function Room2D() {
   const [leaving, setLeaving] = useState(false);
   const [focus, setFocus] = useState<Interactable | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [flourish, setFlourish] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
-  const prevFloor = useRef<number | null>(null);
 
-  const addDwell = useDungeon((s) => s.addDwell);
-  // dwell accrues while actually playing (map view doesn't count as listening)
-  useEffect(() => {
-    if (!currentKey) return;
-    let last = performance.now();
-    const flush = () => {
-      const now = performance.now();
-      if (useDungeon.getState().view === "dungeon")
-        addDwell(currentKey, (now - last) / 1000);
-      last = now;
-    };
-    const iv = setInterval(flush, 5000);
-    return () => {
-      flush();
-      clearInterval(iv);
-    };
-  }, [currentKey, addDwell]);
+  const floor = cell?.pos[2] ?? 0;
+  const flourish = useFloorFlourish(floor);
+  useDwellTracker(currentKey);
 
   const showToast = (msg: string) => {
     setToast(msg);
     clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
-
-  // floor-change flourish
-  const floor = cell?.pos[2] ?? 0;
-  useEffect(() => {
-    if (prevFloor.current !== null && prevFloor.current !== floor) {
-      setFlourish(`FLOOR ${floor >= 0 ? `+${floor}` : floor}`);
-      const t = setTimeout(() => setFlourish(null), 1300);
-      prevFloor.current = floor;
-      return () => clearTimeout(t);
-    }
-    prevFloor.current = floor;
-  }, [floor]);
 
   const trackHash = cell ? hashKey(cell.trackId) : 0;
   const layout = useMemo(
@@ -268,90 +203,11 @@ export default function Room2D() {
   const interactRef = useRef(doInteract);
   interactRef.current = doInteract;
 
-  useEffect(() => {
-    const held = new Set<string>();
-    const down = (e: KeyboardEvent) => {
-      if (e.key === " ") {
-        e.preventDefault();
-        if (useDungeon.getState().view === "dungeon") interactRef.current();
-        return;
-      }
-      const dir = KEYMAP[e.key];
-      if (dir) { held.add(dir); e.preventDefault(); }
-    };
-    const up = (e: KeyboardEvent) => held.delete(KEYMAP[e.key]);
-    window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
-
-    let raf = 0;
-    let last = performance.now();
-    let focusId: string | null = null;
-    const tick = (t: number) => {
-      const dt = Math.min((t - last) / 1000, 0.05);
-      last = t;
-      if (useDungeon.getState().view !== "dungeon") {
-        held.clear();
-        raf = requestAnimationFrame(tick);
-        return;
-      }
-      const p = pos.current;
-      const moving = held.size > 0 && !leavingRef.current;
-      if (moving) {
-        if (held.has("up")) p.y -= SPEED * dt;
-        if (held.has("down")) p.y += SPEED * dt;
-        if (held.has("left")) p.x -= SPEED * dt;
-        if (held.has("right")) p.x += SPEED * dt;
-        p.x = Math.max(TILE, Math.min((GRID - 1) * TILE - CHAR, p.x));
-        p.y = Math.max(2 * TILE, Math.min((GRID - 1) * TILE - CHAR, p.y));
-      }
-      // nearest interactable within padded range gets focus; Space acts on it
-      let best: Interactable | null = null;
-      let bestD = Infinity;
-      for (const it of interactablesRef.current) {
-        const r = it.rect;
-        if (
-          p.x < r.x + r.w + INTERACT_PAD && p.x + CHAR > r.x - INTERACT_PAD &&
-          p.y < r.y + r.h + INTERACT_PAD && p.y + CHAR > r.y - INTERACT_PAD
-        ) {
-          const d = Math.hypot(
-            r.x + r.w / 2 - (p.x + CHAR / 2),
-            r.y + r.h / 2 - (p.y + CHAR / 2),
-          );
-          if (d < bestD) { bestD = d; best = it; }
-        }
-      }
-      if ((best?.id ?? null) !== focusId) {
-        focusId = best?.id ?? null;
-        setFocus(best);
-      }
-      const el = charRef.current;
-      if (el) {
-        el.style.transform = `translate(${p.x}px, ${p.y}px)`;
-        el.classList.toggle("walking", moving);
-        if (held.has("left")) el.classList.add("face-left");
-        else if (held.has("right")) el.classList.remove("face-left");
-      }
-      const cam = cameraRef.current;
-      if (cam) {
-        const sc = scaleRef.current;
-        const { w: vw, h: vh } = viewportRef.current;
-        const cx = vw / 2 - (p.x + CHAR / 2) * sc;
-        const cy = vh / 2 - (p.y + CHAR / 2) * sc;
-        cam.style.transform = `translate(${
-          Math.max(vw - ROOM_PX * sc, Math.min(0, cx))
-        }px, ${
-          Math.max(vh - ROOM_PX * sc, Math.min(0, cy))
-        }px)`;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
+  useGameLoop({
+    pos, charRef, cameraRef, scaleRef, viewportRef,
+    leavingRef, interactablesRef, interactRef,
+    onFocusChange: setFocus,
+  });
 
   if (!cell || !track || !layout) return null;
   scaleRef.current = scale; // keep RAF closure fresh without re-subscribing

@@ -24,7 +24,6 @@ export interface Rect {
 export interface Layout {
   tiles: TilePlace[]; // static wall/dressing/floor-patch layer, render in order
   archways: { slot: ExitSlot; rect: Rect }[]; // dark openings (S/E/W doors)
-  northDoor: boolean; // native 2x2 leaf at cols 6-7 rows 0-1
   bannerCols: number[]; // face-row banner positions (sprite chosen by mood)
   fountainCol: number; // animated mid/basin rendered by Room2D at rows 1/2
   suspectSpots: { x: number; y: number }[]; // pixel, tile-aligned candidates
@@ -34,8 +33,8 @@ export interface Layout {
 }
 
 // door gap lanes: cols 20-21 (north/south), rows 20-21 (east/west) — center of 42-tile grid
-const GAP_LO = 20;
-const GAP_HI = 21;
+export const GAP_LO = 20;
+export const GAP_HI = 21;
 
 // interaction zones per exit slot (pixel) — derived from the same grid
 export const ZONES: Record<ExitSlot, Rect> = {
@@ -177,7 +176,6 @@ export function buildLayout(
   return {
     tiles,
     archways,
-    northDoor: hasDoor("north"),
     bannerCols: [4, 9, 14, 19, 24, 29, 34, 39],
     fountainCol,
     suspectSpots: SUSPECT_TILES.map(([c, r]) => ({ x: c * TILE, y: r * TILE })),
@@ -206,7 +204,7 @@ if (import.meta.env.DEV) {
       !wallAt(20, 41) && wallAt(0, 20) && // south punched, west stays walled
       L.archways.length === 2 &&
       L.archways.map((a) => a.slot).join() === "south,east" &&
-      L.northDoor && L.sealed.length === 1 && L.sealed[0].slot === "west",
+      L.sealed.length === 1 && L.sealed[0].slot === "west",
     "buildLayout smoke check failed", L,
   );
 }
