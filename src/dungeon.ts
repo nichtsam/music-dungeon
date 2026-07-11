@@ -145,7 +145,16 @@ export function generateExits(
     assignment.set(lo.track.id, "down");
     remainingSlots.delete("down");
   }
-  const wallOrder = SLOTS.filter((s) => remainingSlots.has(s));
+  const h = hashKey(key);
+  const horiz = (["north", "east", "south", "west"] as ExitSlot[]).filter(
+    (s) => remainingSlots.has(s),
+  );
+  const rot = h % Math.max(1, horiz.length);
+  const wallOrder: ExitSlot[] = [
+    ...horiz.slice(rot),
+    ...horiz.slice(0, rot),
+    ...(["up", "down"] as ExitSlot[]).filter((s) => remainingSlots.has(s)),
+  ];
   for (const p of placements) {
     if (!assignment.has(p.track.id)) assignment.set(p.track.id, wallOrder.shift()!);
   }
@@ -249,21 +258,25 @@ if (import.meta.env.DEV) {
     g1.exits,
   );
 
-  // reciprocity: enter the room placed north of the entrance -> it must have
-  // a door back south; portal to an already-placed non-adjacent track; dedup
+  // reciprocity: enter any horizontal neighbor of the entrance -> it must have
+  // a door back the opposite direction; portal to an already-placed track; dedup
+  const OPPO: Record<ExitSlot, ExitSlot> = {
+    north: "south", south: "north", east: "west", west: "east", up: "down", down: "up",
+  };
   const cells2 = { ...cells, ...g1.newCells };
   for (const [k, c] of Object.entries(cells2)) if (k === "0,0,0") c.exits = g1.exits;
   const placed2 = { ...placed, ...g1.newPlaced };
-  const northKey = g1.exits.find((e) => e.slot === "north")!.toKey;
-  const northId = cells2[northKey].trackId;
+  const adjExit = g1.exits.find((e) => e.slot !== "up" && e.slot !== "down")!;
+  const adjKey = adjExit.toKey;
+  const adjId = cells2[adjKey].trackId;
   const g2 = generateExits(
-    northKey, cells2, placed2, { self: { id: "self", title: "self" } },
+    adjKey, cells2, placed2, { self: { id: "self", title: "self" } },
     [mk("e", 0.95), mk("self", 0.9), mk("z", 0.5)], M({}), {},
   );
   const back = g2.exits.find((e) => e.toKey === "0,0,0");
   console.assert(
-    back?.kind === "door" && back.slot === "south",
-    "reciprocal door smoke check failed", g2.exits, northId,
+    back?.kind === "door" && back.slot === OPPO[adjExit.slot as ExitSlot],
+    "reciprocal door smoke check failed", g2.exits, adjId,
   );
   console.assert(
     g2.exits.filter((e) => e.kind === "portal").length === 1 &&
@@ -273,7 +286,7 @@ if (import.meta.env.DEV) {
 
   // score gating: below-threshold similars produce no exits (dead end)...
   const g3 = generateExits(
-    northKey, cells2, placed2, {}, [mk("w1", 0.5), mk("w2", 0.4)], M({}), {},
+    adjKey, cells2, placed2, {}, [mk("w1", 0.5), mk("w2", 0.4)], M({}), {},
   );
   console.assert(
     g3.exits.every((e) => e.kind === "door" && e.toKey === "0,0,0"),

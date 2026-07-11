@@ -110,19 +110,23 @@ describe("generateExits", () => {
     expect(g.exits.find((e) => e.slot === "down")?.toTitle).toBe("e");
   });
 
+  const OPPOSITE: Record<string, string> = {
+    north: "south", south: "north", east: "west", west: "east", up: "down", down: "up",
+  };
+
   it("reciprocal door: entering a generated neighbor gives a door back", () => {
     const g1 = generateExits("0,0,0", baseCells, basePlaced, {}, sims, M({}), nbm);
     const cells2 = { ...baseCells, ...g1.newCells };
     for (const [k, c] of Object.entries(cells2)) if (k === "0,0,0") c.exits = g1.exits;
     const placed2 = { ...basePlaced, ...g1.newPlaced };
-    const northKey = g1.exits.find((e) => e.slot === "north")!.toKey;
+    const adjExit = g1.exits.find((e) => e.slot !== "up" && e.slot !== "down")!;
     const g2 = generateExits(
-      northKey, cells2, placed2, { self: { id: "self", title: "self" } },
+      adjExit.toKey, cells2, placed2, { self: { id: "self", title: "self" } },
       [mk("e", 0.95), mk("self", 0.9), mk("z", 0.5)], M({}), {},
     );
     const back = g2.exits.find((e) => e.toKey === "0,0,0");
     expect(back?.kind).toBe("door");
-    expect(back?.slot).toBe("south");
+    expect(back?.slot).toBe(OPPOSITE[adjExit.slot]);
   });
 
   it("already-placed track becomes a portal, not a new room", () => {
@@ -130,9 +134,9 @@ describe("generateExits", () => {
     const cells2 = { ...baseCells, ...g1.newCells };
     for (const [k, c] of Object.entries(cells2)) if (k === "0,0,0") c.exits = g1.exits;
     const placed2 = { ...basePlaced, ...g1.newPlaced };
-    const northKey = g1.exits.find((e) => e.slot === "north")!.toKey;
+    const adjKey = g1.exits.find((e) => e.slot !== "up" && e.slot !== "down")!.toKey;
     const g2 = generateExits(
-      northKey, cells2, placed2, { self: { id: "self", title: "self" } },
+      adjKey, cells2, placed2, { self: { id: "self", title: "self" } },
       [mk("e", 0.95), mk("self", 0.9), mk("z", 0.5)], M({}), {},
     );
     expect(g2.exits.filter((e) => e.kind === "portal").length).toBe(1);
@@ -144,9 +148,9 @@ describe("generateExits", () => {
     const cells2 = { ...baseCells, ...g1.newCells };
     for (const [k, c] of Object.entries(cells2)) if (k === "0,0,0") c.exits = g1.exits;
     const placed2 = { ...basePlaced, ...g1.newPlaced };
-    const northKey = g1.exits.find((e) => e.slot === "north")!.toKey;
+    const adjKey = g1.exits.find((e) => e.slot !== "up" && e.slot !== "down")!.toKey;
     const g3 = generateExits(
-      northKey, cells2, placed2, {},
+      adjKey, cells2, placed2, {},
       [mk("w1", 0.5), mk("w2", 0.4)], M({}), {},
     );
     expect(g3.exits.every((e) => e.kind === "door" && e.toKey === "0,0,0")).toBe(true);
