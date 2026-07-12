@@ -1,5 +1,5 @@
 // Shared CSS-3D machinery for the fullscreen map views (Structure3D, Nest3D).
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type V3 = [number, number, number];
 
@@ -67,6 +67,7 @@ export function useOrbitCamera(initial = { yaw: 0, pitch: 55, zoom: 0.8 }) {
   const sceneRef = useRef<HTMLDivElement>(null);
   const cam = useRef({ ...initial, panX: 0, panY: 0, auto: true });
   const drag = useRef<{ x: number; y: number; mode: "rotate" | "pan" } | null>(null);
+  const [zoom, setZoom] = useState(initial.zoom);
 
   const apply = () => {
     const c = cam.current;
@@ -96,6 +97,7 @@ export function useOrbitCamera(initial = { yaw: 0, pitch: 55, zoom: 0.8 }) {
         2.2,
         Math.max(0.35, cam.current.zoom * Math.exp(-e.deltaY * 0.001)),
       );
+      setZoom(cam.current.zoom);
       apply();
     };
     el?.addEventListener("wheel", onWheel, { passive: false });
@@ -141,5 +143,5 @@ export function useOrbitCamera(initial = { yaw: 0, pitch: 55, zoom: 0.8 }) {
     },
   };
 
-  return { overlayRef, sceneRef, pointerHandlers };
+  return { overlayRef, sceneRef, pointerHandlers, zoom };
 }

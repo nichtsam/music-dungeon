@@ -58,6 +58,22 @@ export function springLayout(
     const mid = (Math.min(...vals) + Math.max(...vals)) / 2;
     for (const p of pos) p[axis] -= mid;
   }
+  // enforce minimum center-to-center distance (40px cube → 80px gap)
+  const MIN_D = 80;
+  for (let pass = 0; pass < 20; pass++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = pos[i][0] - pos[j][0], dy = pos[i][1] - pos[j][1], dz = pos[i][2] - pos[j][2];
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d < MIN_D && d > 0.01) {
+          const push = (MIN_D - d) * 0.5 / d;
+          pos[i][0] += dx * push; pos[j][0] -= dx * push;
+          pos[i][1] += dy * push; pos[j][1] -= dy * push;
+          pos[i][2] += dz * push; pos[j][2] -= dz * push;
+        }
+      }
+    }
+  }
   for (const p of pos) p[2] *= zStretch;
   return pos;
 }

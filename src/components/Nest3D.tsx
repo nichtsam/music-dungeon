@@ -12,63 +12,9 @@ import { hashKey } from "../dungeon";
 import { CUBE_FACES, edgeKey, lineStyle, shade, useOrbitCamera, type V3 } from "./map3d";
 import { springLayout } from "../lib/springLayout";
 
-const HALO = 120;
-
-// tank-style fill: liquid rises along world z; each face maps the level to
-// its own local axis. Order matches CUBE_FACES:
-// "" = +z top · rotateY(180) = -z bottom · rotateY(90) local +x -> world -z ·
-// rotateY(-90) mirrored · rotateX(90) local +y -> world +z · rotateX(-90) mirrored
+const HALO = 70;
+// liquid-fill direction per CUBE_FACES face order: top/bottom/sides
 const FILL_DIR = ["top", "bottom", "to left", "to right", "to bottom", "to top"] as const;
-
-function FillCube({
-  glow,
-  fill,
-  locked,
-  size,
-}: {
-  glow: string;
-  fill: number;
-  locked: boolean;
-  size: number;
-}) {
-  const pct = Math.round(Math.max(0, Math.min(1, fill)) * 100);
-  const liquid = (b: number) => shade(glow, Math.min(1.6, b + 0.5));
-  const shell = (b: number) =>
-    locked ? shade("#8a84a8", b * 0.5) : shade(glow, b * 0.42);
-  return (
-    <>
-      {CUBE_FACES.map((f, i) => {
-        const dir = FILL_DIR[i];
-        let bg: string;
-        if (locked || pct <= 0) bg = shell(f.b);
-        else if (dir === "top") bg = pct >= 100 ? liquid(f.b) : shell(f.b);
-        else if (dir === "bottom") bg = liquid(f.b);
-        else if (pct >= 100) bg = liquid(f.b);
-        else
-          bg = `linear-gradient(${dir}, ${liquid(f.b)} 0 ${pct}%, ${shell(f.b)} ${pct}% 100%)`;
-        return (
-          <div
-            key={f.t}
-            style={{
-              position: "absolute",
-              left: -size / 2,
-              top: -size / 2,
-              width: size,
-              height: size,
-              transform: `${f.t} translateZ(${size / 2}px)`,
-              background: bg,
-              border: "1px solid #0c0a14",
-              borderRadius: 3,
-              backfaceVisibility: "hidden",
-              WebkitBackfaceVisibility: "hidden",
-              pointerEvents: "none",
-            }}
-          />
-        );
-      })}
-    </>
-  );
-}
 
 
 interface NestNode {
@@ -87,7 +33,7 @@ interface NestNode {
 export default function Nest3D() {
   const { cells, tracks, currentKey, visitedKeys, dwell } = useDungeon();
   const [hover, setHover] = useState<NestNode | null>(null);
-  const { overlayRef, sceneRef, pointerHandlers } = useOrbitCamera();
+  const { overlayRef, sceneRef, pointerHandlers, zoom } = useOrbitCamera();
 
   const { nodes, tunnels, moodCounts, avgC } = useMemo(() => {
     const visited = new Set(visitedKeys);
@@ -201,63 +147,78 @@ export default function Nest3D() {
           );
         })}
 
-        {/* nodes: real 3D gems (square bipyramids) that rotate with the scene.
-            Liquid level is geometry — consistent from every viewing angle. */}
-        {nodes.map((n) => (
-          <Fragment key={n.key}>
-            {!n.locked && (
-              <div
-                style={{
-                  position: "absolute",
-                  left: n.pos[0] - HALO / 2,
-                  top: n.pos[1] - HALO / 2,
-                  width: HALO,
-                  height: HALO,
-                  transform: `translateZ(${n.pos[2]}px)`,
-                  background: `radial-gradient(circle, ${n.glow}40, transparent 70%)`,
-                  opacity: 0.5 + 0.5 * n.completeness,
-                  pointerEvents: "none",
-                }}
-              />
-            )}
-            <div
-              style={{
-                position: "absolute",
-                left: n.pos[0],
-                top: n.pos[1],
-                width: 0,
-                height: 0,
-                transform: `translateZ(${n.pos[2]}px)`,
-                transformStyle: "preserve-3d",
-                WebkitTransformStyle: "preserve-3d",
-              }}
-            >
-              <FillCube
-                glow={n.glow}
-                fill={n.completeness}
-                locked={n.locked}
-                size={n.locked ? 18 : 40}
-              />
-              {/* flat hit area for hover + current pulse ring */}
+        {/* nodes: shaded cubes matching Structure3D style; counter-scaled so zoom
+            changes perspective depth but not apparent node size */}
+        {nodes.map((n) => {
+          const s = n.isCurrent ? 32 : n.locked ? 14 : 24;
+          const cs = 1 / zoom;
+          return (
+            <Fragment key={n.key}>
+              {!n.locked && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: n.pos[0] - HALO / 2,
+                    top: n.pos[1] - HALO / 2,
+                    width: HALO,
+                    height: HALO,
+                    transform: `translateZ(${n.pos[2]}px) scale3d(${cs}, ${cs}, ${cs})`,
+                    background: `radial-gradient(circle, ${n.glow}40, transparent 70%)`,
+                    opacity: 0.6,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
               <div
                 onPointerEnter={() => setHover(n)}
                 onPointerLeave={() => setHover((h) => (h?.key === n.key ? null : h))}
                 className={n.isCurrent ? "map-current" : undefined}
                 style={{
                   position: "absolute",
-                  left: -26,
-                  top: -26,
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  border: n.isCurrent ? "2px solid #ffffffa0" : "none",
+                  left: n.pos[0] - s / 2,
+                  top: n.pos[1] - s / 2,
+                  width: s,
+                  height: s,
+                  transform: `translateZ(${n.pos[2]}px) scale3d(${cs}, ${cs}, ${cs})`,
+                  transformStyle: "preserve-3d",
+                  WebkitTransformStyle: "preserve-3d",
                   pointerEvents: "auto",
                   cursor: "default",
                 }}
-              />
-            </div>
-          </Fragment>
-        ))}
+              >
+                {CUBE_FACES.map((f, fi) => {
+                  const pct = Math.round(n.completeness * 100);
+                  const liquid = shade(n.glow, Math.min(1.6, f.b + 0.5));
+                  const shell = n.locked ? shade("#8a84a8", f.b * 0.6) : shade(n.glow, f.b * 0.38);
+                  const dir = FILL_DIR[fi];
+                  let bg: string;
+                  if (n.locked || pct <= 0) bg = shell;
+                  else if (dir === "top") bg = pct >= 100 ? liquid : shell;
+                  else if (dir === "bottom") bg = liquid;
+                  else if (pct >= 100) bg = liquid;
+                  else bg = `linear-gradient(${dir}, ${liquid} 0 ${pct}%, ${shell} ${pct}% 100%)`;
+                  return (
+                    <div
+                      key={f.t}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        transform: `${f.t} translateZ(${s / 2}px)`,
+                        background: bg,
+                        border: n.isCurrent ? "2px solid #fff" : "2px solid #0c0a14",
+                        borderRadius: 4,
+                        boxShadow: n.isCurrent ? `0 0 22px ${n.glow}` : `0 0 8px ${n.glow}80`,
+                        opacity: n.locked ? 0.55 : 0.95,
+                        backfaceVisibility: "hidden",
+                        WebkitBackfaceVisibility: "hidden",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </Fragment>
+          );
+        })}
       </div>
       </div>
 
@@ -270,9 +231,9 @@ export default function Nest3D() {
         <br />
         drag rotate · right-drag / shift-drag pan · scroll zoom · double-click recenter
         <br />
-        <span style={{ color: "#ffd700" }}>◼</span> cubes fill from the bottom as you stay with a track ·{" "}
-        <span style={{ color: "#5a4a8a" }}>━</span> similarity (closer &amp; thicker = more alike) ·{" "}
-        small grey cube = not yet visited
+        <span style={{ color: "#ffd700" }}>◼</span> cubes fill as you attune ·{" "}
+        <span style={{ color: "#8a84a8" }}>◼</span> not yet visited ·{" "}
+        <span style={{ color: "#5a4a8a" }}>━</span> similarity (closer &amp; thicker = more alike)
       </div>
       <div style={{ position: "absolute", top: 62, right: 16, fontSize: 14, opacity: 0.8, textAlign: "right", pointerEvents: "none", lineHeight: 1.7 }}>
         {[...moodCounts.entries()]
