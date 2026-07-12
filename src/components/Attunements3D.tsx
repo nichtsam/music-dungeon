@@ -6,7 +6,13 @@
 // the "next unlockable skill" of the tree. Ground rings fill with dwell-time
 // completeness (attunement).
 import { Fragment, useMemo, useState } from "react";
-import { useDungeon, completenessOf } from "../store";
+import { useDungeon } from "../store";
+import {
+  completenessOf,
+  derivePlayerStats,
+  sprintMaxSeconds,
+  sprintMultiplier,
+} from "../stats";
 import { paletteFor, topMood } from "../theme";
 import { hashKey } from "../dungeon";
 import { CUBE_FACES, edgeKey, lineStyle, shade, useOrbitCamera, type V3 } from "./map3d";
@@ -30,8 +36,8 @@ interface NestNode {
   locked: boolean; // referenced by a similarity edge but not yet visited
 }
 
-export default function Nest3D() {
-  const { cells, tracks, currentKey, visitedKeys, dwell } = useDungeon();
+export default function Attunements3D() {
+  const { cells, tracks, currentKey, visitedKeys, dwell, placed } = useDungeon();
   const [hover, setHover] = useState<NestNode | null>(null);
   const { overlayRef, sceneRef, pointerHandlers, zoom } = useOrbitCamera();
 
@@ -97,6 +103,7 @@ export default function Nest3D() {
 
   const unlockedNodes = nodes.filter((n) => !n.locked);
   const attuned = unlockedNodes.filter((n) => n.completeness >= 1).length;
+  const stats = derivePlayerStats(dwell, placed, tracks);
 
   return (
     <div
@@ -228,6 +235,9 @@ export default function Nest3D() {
         <br />
         {attuned} / {unlockedNodes.length} tracks attuned · avg {Math.round(avgC * 100)}%
         · {nodes.length - unlockedNodes.length} discovered but unvisited
+        <br />
+        ⚡ agility {stats.agility.toFixed(1)} (sprint ×{sprintMultiplier(stats.agility).toFixed(1)})
+        · 🫀 stamina {stats.stamina.toFixed(1)} ({sprintMaxSeconds(stats.stamina).toFixed(1)}s sprint)
         <br />
         drag rotate · right-drag / shift-drag pan · scroll zoom · double-click recenter
         <br />

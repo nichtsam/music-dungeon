@@ -93,6 +93,7 @@ export default function Room2D() {
   const floorUrl = useTilePattern(SPR.floor1);
 
   const charRef = useRef<HTMLDivElement>(null);
+  const staminaRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ x: SPAWN.portal.x, y: SPAWN.portal.y });
   const leavingRef = useRef(false);
   const [enterDelta, setEnterDelta] = useState<[number, number]>([0, 60]);
@@ -214,6 +215,7 @@ export default function Room2D() {
     pos, charRef, cameraRef, scaleRef, viewportRef,
     leavingRef, interactablesRef, interactRef,
     onFocusChange: setFocus,
+    staminaRef,
   });
 
   if (!cell || !track || !layout) return null;
@@ -392,6 +394,10 @@ export default function Room2D() {
         {/* character */}
         <div ref={charRef} className="char" style={{ position: "absolute", top: 0, left: 0, width: CHAR, height: CHAR, willChange: "transform", zIndex: 3 }}>
           <div className="wiz" style={{ position: "absolute", left: -7, bottom: 0 }} />
+          {/* stamina bar: game loop drives width/visibility directly, no re-render */}
+          <div style={{ position: "absolute", top: -14, left: -3, width: CHAR + 6, height: 5, background: "#0c0a14cc", border: "1px solid #0c0a14", borderRadius: 2, opacity: 0, transition: "opacity 0.3s" }}>
+            <div ref={staminaRef} style={{ height: "100%", width: "100%", background: pal.accent, borderRadius: 2 }} />
+          </div>
         </div>
       </div>
       </div>

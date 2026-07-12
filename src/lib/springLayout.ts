@@ -1,4 +1,4 @@
-// Deterministic force-directed spring layout for the Nest3D similarity graph.
+// Deterministic force-directed spring layout for the Attunements3D similarity graph.
 // No randomness: hash-based initial positions, fixed iteration count.
 import type { V3 } from "../components/map3d";
 

@@ -1,4 +1,4 @@
-// Shared CSS-3D machinery for the fullscreen map views (Structure3D, Nest3D).
+// Shared CSS-3D machinery for the fullscreen map views (Structure3D, Attunements3D).
 import { useEffect, useRef, useState } from "react";
 
 export type V3 = [number, number, number];

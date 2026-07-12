@@ -1,16 +1,19 @@
-// Fullscreen map overlay with three switchable modes:
+// Fullscreen map overlay with four switchable modes:
 // 1 FLOOR (2D plan) · 2 STRUCTURE (3D lattice, game-true directions) ·
-// 3 NEST (similarity graph / attunement). Tab still closes (handled in App).
+// 3 ATTUNEMENTS (similarity graph / attunement tree) · 4 STATS (player stats).
+// Tab still closes (handled in App).
 import { useEffect } from "react";
 import { useDungeon, type MapMode } from "../store";
 import FloorMap from "./FloorMap";
 import Structure3D from "./Structure3D";
-import Nest3D from "./Nest3D";
+import Attunements3D from "./Attunements3D";
+import StatsPanel from "./StatsPanel";
 
 const MODES: { mode: MapMode; label: string }[] = [
   { mode: "floor", label: "1 FLOOR" },
   { mode: "structure", label: "2 STRUCTURE" },
-  { mode: "nest", label: "3 NEST" },
+  { mode: "attunements", label: "3 ATTUNEMENTS" },
+  { mode: "stats", label: "4 STATS" },
 ];
 
 export default function MapOverlay() {
@@ -22,7 +25,8 @@ export default function MapOverlay() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "1") setMapMode("floor");
       else if (e.key === "2") setMapMode("structure");
-      else if (e.key === "3") setMapMode("nest");
+      else if (e.key === "3") setMapMode("attunements");
+      else if (e.key === "4") setMapMode("stats");
       else if (e.key === "Escape") setView("dungeon");
     };
     window.addEventListener("keydown", onKey);
@@ -33,7 +37,8 @@ export default function MapOverlay() {
     <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#05030c" }}>
       {mapMode === "floor" && <FloorMap />}
       {mapMode === "structure" && <Structure3D />}
-      {mapMode === "nest" && <Nest3D />}
+      {mapMode === "attunements" && <Attunements3D />}
+      {mapMode === "stats" && <StatsPanel />}
 
       {/* tab bar */}
       <div

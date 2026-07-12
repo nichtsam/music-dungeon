@@ -8,7 +8,7 @@ import {
 } from "./dungeon";
 
 export type View = "entrance" | "dungeon" | "map";
-export type MapMode = "floor" | "structure" | "nest";
+export type MapMode = "floor" | "structure" | "attunements" | "stats";
 
 interface DungeonState {
   cells: Record<string, RoomCell>; // key "x,y,z"
@@ -62,12 +62,6 @@ const EMPTY = {
   loading: false,
   error: null,
 };
-
-// ponytail: 30s dwell = "fully listened" placeholder; swap in real track
-// duration once M4 wires the API
-export const DWELL_TARGET = 30;
-export const completenessOf = (dwell: number | undefined) =>
-  Math.min(1, (dwell ?? 0) / DWELL_TARGET);
 
 export const useDungeon = create<DungeonState>((set, get) => ({
   ...EMPTY,
