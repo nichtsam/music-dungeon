@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   roomTypeFor, spawnEnemies, moveEnemies,
   isOutOfBounds, checkCollisions, tickShooters,
+  initialDifficultyFromStats,
   type Enemy, type Projectile,
 } from "../combat";
+import { BASE_HP, BASE_ATTACK } from "../stats";
 
 // --- roomTypeFor -----------------------------------------------------------
 
@@ -175,5 +177,38 @@ describe("tickShooters", () => {
     const { spawned, enemies } = tickShooters([charger], 500, 500, 1, 0);
     expect(spawned.length).toBe(0); // chargers never spawn projectiles
     expect(enemies[0].chargeTimeLeft).toBeGreaterThan(0); // cooldown expired → started sprint
+  });
+});
+
+// --- initialDifficultyFromStats --------------------------------------------
+
+describe("initialDifficultyFromStats", () => {
+  const baseStats = {
+    maxHP: BASE_HP,
+    attackDmg: BASE_ATTACK,
+    agility: 0,
+    stamina: 0,
+    attackRate: 0.8,
+  };
+
+  it("returns ≤ 1 for base stats (no initial offset)", () => {
+    expect(initialDifficultyFromStats(baseStats)).toBeLessThanOrEqual(1);
+  });
+
+  it("returns > 1 for a strong player", () => {
+    const strong = { ...baseStats, maxHP: 200, attackDmg: 40, agility: 10, stamina: 10, attackRate: 0.4 };
+    expect(initialDifficultyFromStats(strong)).toBeGreaterThan(1);
+  });
+
+  it("returns a finite positive number", () => {
+    const result = initialDifficultyFromStats(baseStats);
+    expect(Number.isFinite(result)).toBe(true);
+    expect(result).toBeGreaterThan(0);
+  });
+
+  it("increases monotonically as stats grow", () => {
+    const mid  = { ...baseStats, maxHP: 100, attackDmg: 20, agility: 5,  stamina: 5,  attackRate: 0.6 };
+    const high = { ...baseStats, maxHP: 200, attackDmg: 40, agility: 10, stamina: 10, attackRate: 0.4 };
+    expect(initialDifficultyFromStats(mid)).toBeLessThan(initialDifficultyFromStats(high));
   });
 });

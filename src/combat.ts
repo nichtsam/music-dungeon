@@ -3,6 +3,7 @@
 import { hashKey } from "./dungeon";
 import { GRID, ROOM_PX } from "./roomLayout";
 import { TILE } from "./sprites";
+import { hpRegenRate, sprintMultiplier, REGEN_BASE, type PlayerStats } from "./stats";
 
 export interface MoodModifier {
   enemySpeedMult: number;
@@ -100,6 +101,30 @@ export interface Enemy {
 export const DIFFICULTY_SCALE_MS = 300_000; // 5 minutes to double
 export const difficultyFor = (dungeonMs: number) => 1 + dungeonMs / DIFFICULTY_SCALE_MS;
 
+// Balance targets for initial difficulty scaling (all tunable).
+export const BALANCE_HITS_TO_KILL      = 3;    // player attacks to kill a charger
+export const BALANCE_HITS_TO_DIE       = 3;    // charger hits to kill player
+export const CHARGER_BASE_HP           = 20;   // must stay in sync with spawnEnemies
+export const CHARGER_BASE_DMG          = 28;   // must stay in sync with spawnEnemies
+export const INITIAL_DIFFICULTY_DAMPING = 0.8; // keeps initial feel slightly under "perfect match"
+const PLAYER_BASE_SPEED = 250; // px/s, matches SPEED in useGameLoop
+const SHOOTER_BASE_HP   = 15;
+const SHOOTER_BASE_DMG  = 15;
+
+// Derives the difficulty scalar a new dungeon should start at, based on the
+// player's accumulated stats. Four axes (attack/HP/speed/sustain) are
+// combined via geometric mean so no single stat dominates.
+export function initialDifficultyFromStats(stats: PlayerStats): number {
+  const d_attack  = (BALANCE_HITS_TO_KILL * stats.attackDmg) / CHARGER_BASE_HP;
+  const d_hp      = stats.maxHP / (BALANCE_HITS_TO_DIE * CHARGER_BASE_DMG);
+  const d_speed   = Math.pow(
+    (PLAYER_BASE_SPEED * sprintMultiplier(stats.agility)) / CHARGE_SPEED,
+    2,
+  );
+  const d_sustain = Math.max(1, hpRegenRate(stats.stamina) / REGEN_BASE);
+  return INITIAL_DIFFICULTY_DAMPING * Math.pow(d_attack * d_hp * d_speed * d_sustain, 0.25);
+}
+
 export interface Projectile {
   id: string;
   x: number;
@@ -168,8 +193,8 @@ export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number
     else { x = SPAWN_HI - inset; y = along; }
     const kind = kinds[i];
     const sqrtD = Math.sqrt(difficulty);
-    const hp = Math.round((kind === "charger" ? 20 : 15) * difficulty * modifier.enemyHPMult);
-    const dmg = Math.round((kind === "charger" ? 28 : 15) * difficulty * modifier.enemyDmgMult);
+    const hp = Math.round((kind === "charger" ? CHARGER_BASE_HP : SHOOTER_BASE_HP) * difficulty * modifier.enemyHPMult);
+    const dmg = Math.round((kind === "charger" ? CHARGER_BASE_DMG : SHOOTER_BASE_DMG) * difficulty * modifier.enemyDmgMult);
     const spd = Math.round(CHARGE_SPEED * sqrtD * modifier.enemySpeedMult);
     const baseCooldown = kind === "charger" ? CHARGE_PAUSE : (SHOOTER_COOLDOWN / sqrtD) * modifier.shootCooldownMult;
     const initCooldown = kind === "charger" ? 0.5 + (seed % 10) * 0.15 : baseCooldown;
