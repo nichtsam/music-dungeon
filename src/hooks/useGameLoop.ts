@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useDungeon } from "../store";
-import { derivePlayerStats, sprintMaxSeconds, sprintMultiplier } from "../stats";
+import { derivePlayerStats, hpRegenRate, sprintMaxSeconds, sprintMultiplier } from "../stats";
 import { GRID, ROOM_PX, type Rect } from "../roomLayout";
 import { TILE } from "../sprites";
 import {
@@ -216,8 +216,12 @@ export function useGameLoop<T extends Focusable>({
         // wave cleared → trigger immediate reinforcement
         if (surviving.length === 0 && enemies.length > 0) spawnTimerRef.current = 0;
 
-        // player HP
-        playerHPRef.current = Math.max(0, playerHPRef.current - playerDmg);
+        // player HP — damage then regen (capped at maxHP)
+        const regen = hpRegenRate(stats.stamina) * dt;
+        playerHPRef.current = Math.min(
+          stats.maxHP,
+          Math.max(0, playerHPRef.current - playerDmg + regen),
+        );
         const hp = playerHPRef.current;
         const hpBar = hpBarRef?.current;
         if (hpBar) {

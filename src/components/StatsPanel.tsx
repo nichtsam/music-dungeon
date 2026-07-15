@@ -5,6 +5,7 @@ import {
   agilityShare,
   derivePlayerStats,
   DWELL_TARGET,
+  hpRegenRate,
   sprintMultiplier,
 } from "../stats";
 import { paletteFor } from "../theme";
@@ -73,10 +74,11 @@ export default function StatsPanel() {
           {card(CLR.stamina, "🫀", "STAMINA", s.stamina.toFixed(1),  "from slow tracks (low BPM)")}
         </div>
 
-        {/* Derived: Sprint Speed, Attack Rate — show formula */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+        {/* Derived: Sprint Speed, Attack Rate, HP Regen — show formula */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
           {card(CLR.sprint, "🏃", "SPRINT SPEED", `×${sprintMultiplier(s.agility).toFixed(1)}`, `agility × 0.1 + 2`)}
           {card(CLR.rate,   "🔫", "ATTACK RATE",  `${s.attackRate.toFixed(1)}s`,                `0.8 − agility × 0.04`)}
+          {card(CLR.hp,     "💉", "HP REGEN",     `${hpRegenRate(s.stamina).toFixed(1)}/s`,     `stamina × 0.4 + 0.5`)}
         </div>
 
         {/* Track contributions */}

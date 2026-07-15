@@ -68,3 +68,4 @@ export function derivePlayerStats(
 
 export const sprintMultiplier = (agility: number) => 2 + agility * 0.1;
 export const sprintMaxSeconds = (stamina: number) => 1.5 + stamina * 0.5;
+export const hpRegenRate = (stamina: number) => 0.5 + stamina * 0.4; // HP/s
