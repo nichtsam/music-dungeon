@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import { promptSearch, similarTracks, trackModels, type TrackModels } from "./api";
+import {
+  primeModelsCache,
+  promptSearch,
+  similarTracks,
+  trackModels,
+  type TrackModels,
+} from "./api";
 import {
   generateExits,
   keyOf,
@@ -42,6 +48,8 @@ function hydrate(): Partial<DungeonState> {
     if (!raw) return {};
     const s = JSON.parse(raw);
     if (!s.currentKey || !s.cells?.[s.currentKey]) return {};
+    for (const t of Object.values(s.tracks ?? {}) as TrackInfo[])
+      if (t.models) primeModelsCache(t.id, t.models);
     return { ...s, view: "dungeon" as View };
   } catch {
     return {};
@@ -108,7 +116,11 @@ export const useDungeon = create<DungeonState>((set, get) => ({
         cells: { [key]: { pos: [0, 0, 0], trackId: top.track.id } },
         placed: { [top.track.id]: key },
         tracks: {
-          [top.track.id]: { id: top.track.id, title: top.track.title },
+          [top.track.id]: {
+            id: top.track.id,
+            title: top.track.title,
+            externalId: top.track.externalId,
+          },
         },
         view: "dungeon",
       });
@@ -162,6 +174,7 @@ export const useDungeon = create<DungeonState>((set, get) => ({
         tracks[it.track.id] ??= {
           id: it.track.id,
           title: it.track.title,
+          externalId: it.track.externalId,
           models: neighborModels[it.track.id],
         };
       set({

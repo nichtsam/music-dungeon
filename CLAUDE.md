@@ -17,11 +17,11 @@ npm run test:watch
 npx vitest run src/__tests__/dungeon.test.ts   # single test file
 ```
 
-Do not start the dev server yourself — Sam runs it. Real-API integration (M4) is paused; the app currently runs on mocks, and real-API response shapes in `api.ts` are guesses marked for verification.
+Do not start the dev server yourself — Sam runs it. Real-API shapes in `api.ts` follow the spec at github.com/cyanite-ai/mml-hackatune-26 (REST, `https://rest-api.cyanite.ai/v1`, `x-api-key` header).
 
 ## Architecture
 
-Data flow: components → `store.ts` (zustand) → `api.ts` → real API or `mock.ts` (`VITE_MOCK=1`). The Vite dev proxy (`vite.config.ts`) injects `x-api-key` server-side so the key never reaches the browser.
+Data flow: components → `store.ts` (zustand) → `api.ts` → real API or `mock.ts` (`VITE_MOCK=1`). Two services, separately configurable: search/similarity/models (`CYANITE_API_URL/KEY`, proxied at `/api`) and music fetch (`AUDIO_API_URL/KEY`, proxied at `/audio`, default Jamendo public storage). The Vite dev proxy (`vite.config.ts`) injects each `x-api-key` server-side so keys never reach the browser. `AudioPlayer` (app-level) streams the current room's mp3 via `audioUrl()`; it pauses while the map is open (map tabs will get their own music) and renders nothing for mock tracks.
 
 - **`dungeon.ts`** — pure dungeon model. Rooms live on a 3D lattice keyed `"x,y,z"`. Core invariant: **structure is immutable once generated** — a cell's `exits` are written exactly once, on first entry. Each track is placed in exactly one cell (`placed` map); a similar track already placed elsewhere becomes a one-way portal instead of a new room. Doors are reciprocal (a neighbor's door facing you gives you the matching door back). Similarity score gates exits (`DOOR_THRESHOLD`); weak matches make dead ends. Door labels come from mood/BPM deltas between track model vectors.
 - **`store.ts`** — all app state, persisted to localStorage (`music-dungeon-v2`) on every change; `hydrate()` restores mid-run. `enterRoom` fetches similar tracks + models, then calls `generateExits`.

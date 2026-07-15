@@ -77,4 +77,17 @@ describe("buildLayout", () => {
     const empty = buildLayout("0,0,0", 0, []);
     expect(empty.sealed.length).toBe(4);
   });
+
+  // hashKey is unsigned 32-bit; hashes >= 2^31 must not produce negative
+  // indices (signed >> would) — undefined sprites crash spriteStyle()
+  it("survives track hashes >= 2^31 with valid sprites and in-grid tiles", () => {
+    const big = buildLayout("0,0,0", 0xdeadbeef, exits);
+    for (const t of [...big.tiles, ...big.props]) {
+      expect(t.spr).toBeDefined();
+      expect(t.col).toBeGreaterThanOrEqual(0);
+      expect(t.col).toBeLessThan(GRID);
+      expect(t.row).toBeGreaterThanOrEqual(0);
+      expect(t.row).toBeLessThan(GRID);
+    }
+  });
 });

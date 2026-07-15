@@ -1,4 +1,4 @@
-// Cyanite private-alpha API wrapper. Shapes per cyanite2.0 public-documentation/docs/search.mdx.
+// Cyanite REST API wrapper. Shapes per github.com/cyanite-ai/mml-hackatune-26.
 // VITE_MOCK=1 (or no proxy target) serves fixtures from mock.ts instead.
 import * as mock from "./mock";
 
@@ -16,7 +16,7 @@ export interface ScoredTrack {
 export interface TrackModels {
   moods: Record<string, number>; // MoodSimpleV2 scores 0..1
   bpm: number | null; // BpmV2
-  genre: string | null; // top GenreV7 tag
+  genre: string | null; // top MainGenreV2 tag
 }
 
 const MOCK = import.meta.env.VITE_MOCK === "1";
@@ -40,10 +40,9 @@ export async function promptSearch(
   limit = 5,
 ): Promise<ScoredTrack[]> {
   if (MOCK) return mock.promptSearch(query, limit);
-  const res = await post(
-    `/v1/private-alpha/library-tracks/prompt-search?limit=${limit}`,
-    { query },
-  );
+  const res = await post(`/v1/library-tracks/prompt-search?limit=${limit}`, {
+    query,
+  });
   return res.items;
 }
 
@@ -53,7 +52,7 @@ export async function similarTracks(
 ): Promise<ScoredTrack[]> {
   if (MOCK) return mock.similarTracks(id, limit);
   const res = await post(
-    `/v1/private-alpha/library-tracks/${id}/similar-tracks?limit=${limit}`,
+    `/v1/library-tracks/${id}/similar-tracks?limit=${limit}`,
     {},
   );
   return res.items;
@@ -69,19 +68,34 @@ export async function trackModels(id: string): Promise<TrackModels> {
   return models;
 }
 
-// ponytail: response shape guessed from model names; verify + fix in M4 against real API
+// seed the cache from persisted state so reloads don't re-spend models quota
+export function primeModelsCache(id: string, models: TrackModels): void {
+  modelsCache.set(id, models);
+}
+
 async function fetchModels(id: string): Promise<TrackModels> {
+  // GET /library-tracks/{id}/models -> {items: [{version, ...}]}
   const res = await req(
-    `/v1/library-tracks/${id}/models?model=MoodSimpleV2&model=BpmV2&model=GenreV7`,
+    `/v1/library-tracks/${id}/models?model=MoodSimpleV2&model=BpmV2&model=MainGenreV2`,
   );
   const byName: Record<string, any> = {};
-  for (const m of res.items ?? res.models ?? []) byName[m.model ?? m.name] = m;
-  const genres: Record<string, number> = byName.GenreV7?.scores ?? {};
+  for (const m of res.items ?? []) byName[m.version] = m;
+  const genres: Record<string, number> = byName.MainGenreV2?.scores ?? {};
   const topGenre =
     Object.entries(genres).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   return {
     moods: byName.MoodSimpleV2?.scores ?? {},
     bpm: byName.BpmV2?.tag ?? null,
-    genre: byName.GenreV7?.tag ?? topGenre,
+    genre: byName.MainGenreV2?.tags?.[0] ?? topGenre,
   };
+}
+
+// jamendo id lives in title ("12345.mp3") or externalId; mock tracks have neither
+export function audioUrl(t: {
+  title?: string;
+  externalId?: string | null;
+}): string | null {
+  const jam =
+    t.externalId ?? (t.title?.endsWith(".mp3") ? t.title.slice(0, -4) : null);
+  return jam ? `/audio/download/track/${jam}/mp32/` : null;
 }

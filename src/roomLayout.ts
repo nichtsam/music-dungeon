@@ -73,9 +73,10 @@ export function buildLayout(
   // floor variation patches (floor area rows 2..40, cols 1..40)
   for (let i = 0; i < 20; i++) {
     tiles.push({
-      col: 1 + ((trackHash >> (i * 3)) % 40),
-      row: 2 + ((trackHash >> (i * 3 + 7)) % 38),
-      spr: FLOOR_VARIANTS[(trackHash >> i) % FLOOR_VARIANTS.length],
+      // >>> not >>: hashes >= 2^31 turn negative under signed shift
+      col: 1 + ((trackHash >>> (i * 3)) % 40),
+      row: 2 + ((trackHash >>> (i * 3 + 7)) % 38),
+      spr: FLOOR_VARIANTS[(trackHash >>> i) % FLOOR_VARIANTS.length],
     });
   }
 

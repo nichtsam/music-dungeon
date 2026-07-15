@@ -18,6 +18,13 @@ describe("springLayout", () => {
     expect(dist(p, 0, 1)).toBeLessThan(dist(p, 0, 2));
   });
 
+  it("produces finite positions for hashes >= 2^31 (unsigned hashKey range)", () => {
+    const p = springLayout(["a", "b"], [0xdeadbeef, 0xffffffff], [
+      { a: 0, b: 1, score: 0.8 },
+    ]);
+    for (const v of p.flat()) expect(Number.isFinite(v)).toBe(true);
+  });
+
   it("is deterministic — same inputs produce same positions", () => {
     const p1 = springLayout(["x", "y"], [42, 1337], [{ a: 0, b: 1, score: 0.8 }]);
     const p2 = springLayout(["x", "y"], [42, 1337], [{ a: 0, b: 1, score: 0.8 }]);

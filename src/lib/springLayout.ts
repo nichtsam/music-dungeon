@@ -15,8 +15,9 @@ export function springLayout(
   const n = ids.length;
   const pos: V3[] = hashes.map((h) => {
     const t = ((h % 997) / 997) * Math.PI * 2;
-    const u = (((h >> 10) % 991) / 991) * 2 - 1;
-    const r = 160 + ((h >> 20) % 80);
+    // >>> not >>: hashes >= 2^31 turn negative under signed shift (u < -1 → NaN sqrt)
+    const u = (((h >>> 10) % 991) / 991) * 2 - 1;
+    const r = 160 + ((h >>> 20) % 80);
     const s = Math.sqrt(1 - u * u);
     return [r * s * Math.cos(t), r * s * Math.sin(t), r * u * 0.7];
   });

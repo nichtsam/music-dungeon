@@ -40,6 +40,7 @@ export interface RoomCell {
 export interface TrackInfo {
   id: string;
   title: string;
+  externalId?: string | null; // jamendo id fallback for audio playback
   models?: TrackModels;
 }
 
