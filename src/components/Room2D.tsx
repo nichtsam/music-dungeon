@@ -11,7 +11,6 @@ import { SPR, TILE, spriteStyle } from "../sprites";
 import { hashKey, reciprocalDoors, type CellExit, type ExitSlot } from "../dungeon";
 import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
 import { useGameLoop, CHAR } from "../hooks/useGameLoop";
-import { useDwellTracker } from "../hooks/useDwellTracker";
 import { useFloorFlourish } from "../hooks/useFloorFlourish";
 import { useRoomScale } from "../hooks/useRoomScale";
 import { useTilePattern } from "../hooks/useTilePattern";
@@ -112,8 +111,6 @@ export default function Room2D() {
 
   const floor = cell?.pos[2] ?? 0;
   const flourish = useFloorFlourish(floor);
-  useDwellTracker(currentKey);
-
   const [showInfo, setShowInfo] = useState(true);
   useEffect(() => {
     setShowInfo(true);
@@ -230,7 +227,7 @@ export default function Room2D() {
   const interactRef = useRef(doInteract);
   interactRef.current = doInteract;
 
-  const { enemiesRef, projectilesRef, playerHPRef } = useGameLoop({
+  const { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef } = useGameLoop({
     pos, charRef, cameraRef, scaleRef, viewportRef,
     leavingRef, interactablesRef, interactRef,
     onFocusChange: setFocus,
@@ -244,9 +241,8 @@ export default function Room2D() {
     if (rtype === "combat") {
       enemiesRef.current = spawnEnemies(currentKey, pos.current.x, pos.current.y);
       projectilesRef.current = [];
-      // only lock on first visit — lockUntil persists, so returning players skip the lock
       if (!lockUntil[currentKey]) {
-        setLockUntil(currentKey, Date.now() + 30_000);
+        setLockUntil(currentKey, dungeonMsRef.current + 30_000);
       }
     } else if (rtype === "rest") {
       const stats = derivePlayerStats(dwell, placed, tracks, durations, totalDwell);
@@ -268,15 +264,15 @@ export default function Room2D() {
   useEffect(() => {
     if (!currentKey) return;
     const until = lockUntil[currentKey] ?? 0;
-    if (Date.now() >= until) { setLockSecondsLeft(0); return; }
+    if (dungeonMsRef.current >= until) { setLockSecondsLeft(0); return; }
     const iv = setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.ceil((until - dungeonMsRef.current) / 1000));
       setLockSecondsLeft(remaining);
       if (remaining === 0) clearInterval(iv);
     }, 250);
-    setLockSecondsLeft(Math.ceil((until - Date.now()) / 1000));
+    setLockSecondsLeft(Math.ceil((until - dungeonMsRef.current) / 1000));
     return () => clearInterval(iv);
-  }, [currentKey, lockUntil]);
+  }, [currentKey, lockUntil]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!cell || !track || !layout) return null;
   scaleRef.current = scale; // keep RAF closure fresh without re-subscribing

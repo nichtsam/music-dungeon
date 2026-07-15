@@ -49,7 +49,7 @@ export function useGameLoop<T extends Focusable>({
   onFocusChange: (it: T | null) => void;
   staminaRef?: React.RefObject<HTMLDivElement | null>;
   hpBarRef?: React.RefObject<HTMLDivElement | null>;
-}): { enemiesRef: React.MutableRefObject<Enemy[]>; projectilesRef: React.MutableRefObject<Projectile[]>; playerHPRef: React.MutableRefObject<number> } {
+}): { enemiesRef: React.MutableRefObject<Enemy[]>; projectilesRef: React.MutableRefObject<Projectile[]>; playerHPRef: React.MutableRefObject<number>; dungeonMsRef: React.MutableRefObject<number> } {
   const onFocusChangeRef = useRef(onFocusChange);
   onFocusChangeRef.current = onFocusChange;
 
@@ -62,6 +62,7 @@ export function useGameLoop<T extends Focusable>({
   const waveRef = useRef(0);
   const spawnTimerRef = useRef(0); // seconds until next reinforcement wave
   const prevKeyRef = useRef<string | null>(null);
+  const dungeonMsRef = useRef(0); // ms elapsed while view === "dungeon"; used for lock timer and dwell
 
   useEffect(() => {
     const held = new Set<string>();
@@ -72,7 +73,7 @@ export function useGameLoop<T extends Focusable>({
         const s = useDungeon.getState();
         if (s.view !== "dungeon") return;
         const lock = s.lockUntil[s.currentKey ?? ""] ?? 0;
-        if (Date.now() >= lock) interactRef.current();
+        if (dungeonMsRef.current >= lock) interactRef.current();
         return;
       }
       const dir = KEYMAP[e.key];
@@ -90,6 +91,8 @@ export function useGameLoop<T extends Focusable>({
     let focusId: string | null = null;
     let stam = -1; // seconds of sprint left; -1 = init to max on first tick
     let winded = false; // emptied the bar; locked out until it refills a bit
+    let dwellAccum = 0; // seconds accumulated since last flush
+    let dwellFlush = 5; // seconds until next flush
     const tick = (t: number) => {
       const dt = Math.min((t - last) / 1000, 0.05);
       last = t;
@@ -100,10 +103,26 @@ export function useGameLoop<T extends Focusable>({
         return;
       }
 
-      // detect room change → reset spawn timer
+      dungeonMsRef.current += dt * 1000;
+
+      // detect room change → flush dwell for old room, reset spawn timer
       if (state.currentKey !== prevKeyRef.current) {
+        if (prevKeyRef.current && dwellAccum > 0) {
+          state.addDwell(prevKeyRef.current, dwellAccum);
+          dwellAccum = 0;
+        }
+        dwellFlush = 5;
         prevKeyRef.current = state.currentKey;
         spawnTimerRef.current = 6; // first reinforcement 6s after entry
+      }
+
+      // dwell: accumulate and flush every 5s
+      dwellAccum += dt;
+      dwellFlush -= dt;
+      if (dwellFlush <= 0) {
+        if (state.currentKey) state.addDwell(state.currentKey, dwellAccum);
+        dwellAccum = 0;
+        dwellFlush = 5;
       }
 
       const p = pos.current;
@@ -276,8 +295,10 @@ export function useGameLoop<T extends Focusable>({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       cancelAnimationFrame(raf);
+      const s = useDungeon.getState();
+      if (s.currentKey && dwellAccum > 0) s.addDwell(s.currentKey, dwellAccum);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { enemiesRef, projectilesRef, playerHPRef };
+  return { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef };
 }
