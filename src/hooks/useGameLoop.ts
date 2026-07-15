@@ -57,14 +57,15 @@ export function useGameLoop<T extends Focusable>({
   const enemiesRef = useRef<Enemy[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const lightningRef = useRef<LightningArc[]>([]);
-  const playerHPRef = useRef(-1); // -1 = uninitialised, set to maxHP on first combat tick
+  const playerHPRef = useRef(-1); // -1 = uninitialised; init to savedHP ?? maxHP on first combat tick
   const autoAttackCdRef = useRef(0); // seconds until next lightning strike
   const projIdSeqRef = useRef(0);
   const gameOverFiredRef = useRef(false); // prevent double-dispatch
   const waveRef = useRef(0);
   const spawnTimerRef = useRef(0); // seconds until next reinforcement wave
   const prevKeyRef = useRef<string | null>(null);
-  const dungeonMsRef = useRef(0); // ms elapsed while view === "dungeon"; used for lock timer and dwell
+  // dungeonMs persisted — init from store so lockUntil comparisons survive reload
+  const dungeonMsRef = useRef(useDungeon.getState().dungeonMs);
 
   useEffect(() => {
     const held = new Set<string>();
@@ -91,7 +92,9 @@ export function useGameLoop<T extends Focusable>({
     let raf = 0;
     let last = performance.now();
     let focusId: string | null = null;
-    let stam = -1; // seconds of sprint left; -1 = init to max on first tick
+    const initSave = useDungeon.getState();
+    // restore stamina from last save; -1 = uninitialised (will be clamped to maxStam)
+    let stam = initSave.savedStamina ?? -1;
     let winded = false; // emptied the bar; locked out until it refills a bit
     let dwellAccum = 0; // seconds accumulated since last flush
     let dwellFlush = 5; // seconds until next flush
@@ -118,11 +121,17 @@ export function useGameLoop<T extends Focusable>({
         spawnTimerRef.current = 6; // first reinforcement 6s after entry
       }
 
-      // dwell: accumulate and flush every 5s
+      // dwell + game state: accumulate and flush every 5s
       dwellAccum += dt;
       dwellFlush -= dt;
       if (dwellFlush <= 0) {
         if (state.currentKey) state.addDwell(state.currentKey, dwellAccum);
+        // persist HP/stamina/dungeonMs so reload restores mid-run state
+        state.saveProgress(
+          playerHPRef.current >= 0 ? playerHPRef.current : null,
+          stam >= 0 ? stam : null,
+          dungeonMsRef.current,
+        );
         dwellAccum = 0;
         dwellFlush = 5;
       }
@@ -163,8 +172,11 @@ export function useGameLoop<T extends Focusable>({
       // --- combat tick --------------------------------------------------------
       const enemies = enemiesRef.current;
       if (enemies.length > 0 || projectilesRef.current.length > 0) {
-        // init HP on first combat encounter
-        if (playerHPRef.current < 0) playerHPRef.current = stats.maxHP;
+        // init HP on first combat encounter: restore saved value, fall back to maxHP
+        if (playerHPRef.current < 0) {
+          const saved = useDungeon.getState().savedHP;
+          playerHPRef.current = saved != null ? Math.min(saved, stats.maxHP) : stats.maxHP;
+        }
 
         // move enemies, tick shooters
         let moved = moveEnemies(enemies, p.x, p.y, dt);

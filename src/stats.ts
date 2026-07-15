@@ -39,11 +39,28 @@ export interface PlayerStats {
 export const agilityShare = (bpm: number | null | undefined) =>
   bpm == null ? 0.5 : Math.max(0, Math.min(1, (bpm - 60) / 120));
 
-// Each stat has its own independent calculation from listening time:
-//   hp, attack  → all listening seconds, BPM-agnostic
-//   agility     → listening seconds × agilityShare(BPM)   (high BPM gives more)
-//   stamina     → listening seconds × (1 − agilityShare)  (low BPM gives more)
-// Completion bonus (track/DWELL_TARGET extra) applies to each independently.
+export interface TrackContrib {
+  pts: number;
+  hp: number;
+  attack: number;
+  agility: number;
+  stamina: number;
+}
+
+// Single source of per-track stat math. Used by derivePlayerStats and StatsPanel.
+export function trackContrib(
+  effective: number,
+  target: number,
+  bpm: number | null | undefined,
+): TrackContrib {
+  const listened = Math.min(effective, target);
+  if (listened === 0) return { pts: 0, hp: 0, attack: 0, agility: 0, stamina: 0 };
+  // ponytail: bonus doubles points on full listen; long tracks earn more than short ones
+  const pts = listened / DWELL_TARGET + (effective >= target ? target / DWELL_TARGET : 0);
+  const f = agilityShare(bpm);
+  return { pts, hp: pts * HP_PER_PT, attack: pts * ATTACK_PER_PT, agility: pts * f, stamina: pts * (1 - f) };
+}
+
 // pastTracks: track info from treeNodes for historical runs (BPM source).
 export function derivePlayerStats(
   dwell: Record<string, number>,
@@ -57,16 +74,12 @@ export function derivePlayerStats(
 
   function accumulate(trackId: string, effective: number) {
     const target = durations[trackId] ?? DWELL_TARGET;
-    const listened = Math.min(effective, target);
-    if (listened === 0) return;
-    // ponytail: bonus doubles points on full listen; long tracks earn more than short ones
-    const pts = listened / DWELL_TARGET + (effective >= target ? target / DWELL_TARGET : 0);
     const bpm = (tracks[trackId] ?? pastTracks[trackId])?.models?.bpm;
-    const f = agilityShare(bpm);
-    maxHP     += pts * HP_PER_PT;
-    attackDmg += pts * ATTACK_PER_PT;
-    agility   += pts * f;
-    stamina   += pts * (1 - f);
+    const c = trackContrib(effective, target, bpm);
+    maxHP     += c.hp;
+    attackDmg += c.attack;
+    agility   += c.agility;
+    stamina   += c.stamina;
   }
 
   for (const [trackId, cellKey] of Object.entries(placed)) {

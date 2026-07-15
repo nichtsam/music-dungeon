@@ -2,11 +2,11 @@
 // what listening has earned, and which tracks fed which stat.
 import { useDungeon } from "../store";
 import {
-  agilityShare,
   derivePlayerStats,
   DWELL_TARGET,
   hpRegenRate,
   sprintMultiplier,
+  trackContrib,
   HP_PER_PT,
   ATTACK_PER_PT,
   ATTACK_RATE_BASE,
@@ -38,16 +38,12 @@ export default function StatsPanel() {
 
   function pushEntry(trackId: string, t: { title: string; models?: { bpm?: number | null } | null }, effective: number) {
     const target = durations[trackId] ?? DWELL_TARGET;
-    const listened = Math.min(effective, target);
-    if (listened === 0) return;
-    const pts = listened / DWELL_TARGET + (effective >= target ? target / DWELL_TARGET : 0);
-    const f = agilityShare(t.models?.bpm);
+    const c = trackContrib(effective, target, t.models?.bpm);
+    if (c.pts === 0) return;
     trackEntries.push({
       id: trackId, title: t.title, bpm: t.models?.bpm,
       glow: paletteFor(t.models as Parameters<typeof paletteFor>[0]).glow,
-      pts,                   // goes to both maxHP and attackDmg
-      agility: pts * f,
-      stamina: pts * (1 - f),
+      pts: c.pts, agility: c.agility, stamina: c.stamina,
     });
   }
 

@@ -27,9 +27,12 @@ interface DungeonState {
   dwell: Record<string, number>; // cellKey -> seconds spent in the room
   durations: Record<string, number>; // trackId -> audio duration in seconds (runtime only)
   runSeed: string; // randomised per run so room types vary between runs
-  // combat — not persisted, reset on hydrate
-  lockUntil: Record<string, number>; // cellKey -> ms timestamp when lock expires
+  lockUntil: Record<string, number>; // cellKey -> dungeonMs timestamp when lock expires
   gameOver: boolean;
+  // runtime game state — flushed every 5s from useGameLoop
+  savedHP: number | null;       // null = init to maxHP on first combat tick
+  savedStamina: number | null;  // null = init to maxStam on first tick
+  dungeonMs: number;            // total elapsed dungeon time; reference clock for lockUntil
   // meta-progression — persisted
   attunementBonus: Record<string, number>; // cellKey -> dwell multiplier (treasure rooms)
   totalDwell: Record<string, number>; // trackId -> best dwell seconds across all runs
@@ -45,6 +48,7 @@ interface DungeonState {
   setDuration: (trackId: string, seconds: number) => void;
   setLockUntil: (cellKey: string, until: number) => void;
   setGameOver: (over: boolean) => void;
+  saveProgress: (hp: number | null, stamina: number | null, dungeonMs: number) => void;
   setBonusRoom: (cellKey: string, mult: number) => void;
   resetDungeon: () => void;
   enterDungeon: (query: string) => Promise<void>;
@@ -87,6 +91,9 @@ const EMPTY = {
   runSeed: "",
   lockUntil: {},
   gameOver: false,
+  savedHP: null,
+  savedStamina: null,
+  dungeonMs: 0,
   attunementBonus: {},
   totalDwell: {},
   treeNodes: {} as Record<string, TrackInfo>,
@@ -135,6 +142,13 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 
   setGameOver: (over) => set({ gameOver: over }),
 
+  saveProgress: (hp, stamina, dungeonMs) =>
+    set((s) => ({
+      savedHP: hp ?? s.savedHP,
+      savedStamina: stamina ?? s.savedStamina,
+      dungeonMs,
+    })),
+
   setBonusRoom: (cellKey, mult) =>
     set((s) => ({ attunementBonus: { ...s.attunementBonus, [cellKey]: mult } })),
 
@@ -146,7 +160,7 @@ export const useDungeon = create<DungeonState>((set, get) => ({
       snapshot[trackId] = Math.max(s.dwell[cellKey] ?? 0, s.totalDwell[trackId] ?? 0);
     }
     localStorage.removeItem(STORAGE_KEY);
-    set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View });
+    set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View, savedHP: null, savedStamina: null, dungeonMs: 0, lockUntil: {} });
   },
 
   reset: () => {
@@ -261,9 +275,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs }),
   );
 });
