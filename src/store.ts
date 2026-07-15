@@ -25,7 +25,7 @@ interface DungeonState {
   discovered: Record<string, string[]>; // cellKey -> revealed portal toKeys
   searched: Record<string, number[]>; // cellKey -> searched suspect-spot indices
   dwell: Record<string, number>; // cellKey -> seconds spent in the room
-  durations: Record<string, number>; // trackId -> audio duration in seconds (runtime only)
+  durations: Record<string, number>; // trackId -> audio duration in seconds
   runSeed: string; // randomised per run so room types vary between runs
   lockUntil: Record<string, number>; // cellKey -> dungeonMs timestamp when lock expires
   gameOver: boolean;
@@ -119,7 +119,12 @@ export const useDungeon = create<DungeonState>((set, get) => ({
     }),
 
   setDuration: (trackId, seconds) =>
-    set((s) => ({ durations: { ...s.durations, [trackId]: seconds } })),
+    set((s) => ({
+      durations: { ...s.durations, [trackId]: seconds },
+      treeNodes: s.treeNodes[trackId]
+        ? { ...s.treeNodes, [trackId]: { ...s.treeNodes[trackId], duration: seconds } }
+        : s.treeNodes,
+    })),
 
   discover: (cellKey, toKey) =>
     set((s) => ({
@@ -242,7 +247,14 @@ export const useDungeon = create<DungeonState>((set, get) => ({
           models: neighborModels[it.track.id],
         };
       // Grow the attunement tree: only add the track the player just visited.
-      const newTreeNodes: Record<string, TrackInfo> = { ...s.treeNodes, [cell.trackId]: tracks[cell.trackId] };
+      // s.durations[cell.trackId] may already be set if AudioPlayer fired before the API returned.
+      const newTreeNodes: Record<string, TrackInfo> = {
+        ...s.treeNodes,
+        [cell.trackId]: {
+          ...tracks[cell.trackId],
+          duration: s.durations[cell.trackId] ?? selfModels?.duration,
+        },
+      };
 
       // Add edges between this track and any already-visited neighbors (no dangling edges).
       const allCells = { ...s.cells, ...newCells, [key]: { ...fresh, exits } };
@@ -275,9 +287,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs }),
   );
 });

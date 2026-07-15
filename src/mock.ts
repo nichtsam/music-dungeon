@@ -125,5 +125,5 @@ export function similarTracks(id: string, limit: number): Promise<ScoredTrack[]>
 export function trackModels(id: string): Promise<TrackModels> {
   const t = byId.get(id);
   if (!t) return Promise.reject(new Error(`mock: unknown track ${id}`));
-  return delay({ moods: t.moods, bpm: t.bpm, genre: t.genre });
+  return delay({ moods: t.moods, bpm: t.bpm, genre: t.genre, duration: Math.round(15360 / t.bpm) });
 }

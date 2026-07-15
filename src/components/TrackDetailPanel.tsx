@@ -10,11 +10,22 @@ interface Props {
 }
 
 export default function TrackDetailPanel({ trackId, onClose }: Props) {
-  const { tracks, treeNodes, placed, dwell, totalDwell, durations, visitedKeys } = useDungeon();
+  const {
+    tracks,
+    treeNodes,
+    placed,
+    dwell,
+    totalDwell,
+    durations,
+    visitedKeys,
+  } = useDungeon();
   const track = treeNodes[trackId] ?? tracks[trackId];
+  console.log({ track });
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -24,11 +35,15 @@ export default function TrackDetailPanel({ trackId, onClose }: Props) {
   const { glow } = paletteFor(track.models);
   const cellKey = placed[trackId];
   const visitedThisRun = cellKey ? visitedKeys.includes(cellKey) : false;
-  const duration = durations[trackId];
-  const effectiveDwell = Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0);
-  const attunement = (visitedThisRun || totalDwell[trackId])
-    ? completenessOf(effectiveDwell, duration ?? DWELL_TARGET)
-    : undefined;
+  const duration = durations[trackId] ?? track?.duration;
+  const effectiveDwell = Math.max(
+    dwell[cellKey] ?? 0,
+    totalDwell[trackId] ?? 0,
+  );
+  const attunement =
+    visitedThisRun || totalDwell[trackId]
+      ? completenessOf(effectiveDwell, duration ?? DWELL_TARGET)
+      : undefined;
 
   return (
     <>
@@ -55,13 +70,26 @@ export default function TrackDetailPanel({ trackId, onClose }: Props) {
       >
         {!visitedThisRun && !totalDwell[trackId] ? (
           <div style={{ color: "#b0a8d0" }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: "#8a7ab8", marginBottom: 8 }}>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 700,
+                color: "#8a7ab8",
+                marginBottom: 8,
+              }}
+            >
               🔒 {track.title}
             </div>
-            <div style={{ opacity: 0.55, fontSize: 13 }}>Not yet visited — find it in the dungeon</div>
+            <div style={{ opacity: 0.55, fontSize: 13 }}>
+              Not yet visited — find it in the dungeon
+            </div>
           </div>
         ) : (
-          <TrackDetail track={track} duration={duration} attunement={attunement} />
+          <TrackDetail
+            track={track}
+            duration={duration}
+            attunement={attunement}
+          />
         )}
       </div>
     </>

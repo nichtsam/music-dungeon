@@ -17,6 +17,7 @@ export interface TrackModels {
   moods: Record<string, number>; // MoodSimpleV2 scores 0..1
   bpm: number | null; // BpmV2
   genre: string | null; // top MainGenreV2 tag
+  duration?: number; // seconds; set by AudioPlayer in real mode, derived from BPM in mock
 }
 
 const MOCK = import.meta.env.VITE_MOCK === "1";

@@ -36,8 +36,8 @@ export default function StatsPanel() {
     pts: number; agility: number; stamina: number;
   }[] = [];
 
-  function pushEntry(trackId: string, t: { title: string; models?: { bpm?: number | null } | null }, effective: number) {
-    const target = durations[trackId] ?? DWELL_TARGET;
+  function pushEntry(trackId: string, t: { title: string; duration?: number; models?: { bpm?: number | null } | null }, effective: number) {
+    const target = t.duration ?? durations[trackId] ?? DWELL_TARGET;
     const c = trackContrib(effective, target, t.models?.bpm);
     if (c.pts === 0) return;
     trackEntries.push({

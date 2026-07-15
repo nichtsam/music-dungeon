@@ -42,6 +42,7 @@ export interface TrackInfo {
   title: string;
   externalId?: string | null; // jamendo id fallback for audio playback
   models?: TrackModels;
+  duration?: number; // audio duration in seconds, cached from AudioPlayer
 }
 
 const MAX_EXITS = 6;
