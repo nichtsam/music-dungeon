@@ -8,15 +8,34 @@ export const DWELL_TARGET = 30;
 export const completenessOf = (dwell: number | undefined, target = DWELL_TARGET) =>
   Math.min(1, (dwell ?? 0) / target);
 
+// Stat scaling constants — one place to tune all progression rates.
+export const BASE_HP       = 50;
+export const BASE_ATTACK   = 10;
+export const HP_PER_PT     = 5;
+export const ATTACK_PER_PT = 1.25;
+
+export const ATTACK_RATE_BASE  = 0.8;   // seconds between shots at agility=0
+export const ATTACK_RATE_SLOPE = 0.04;  // reduction per agility point
+export const ATTACK_RATE_MIN   = 0.3;
+
+export const SPRINT_SPEED_BASE  = 2;    // multiplier at agility=0
+export const SPRINT_SPEED_SLOPE = 0.1;  // added per agility point
+
+export const SPRINT_DUR_BASE  = 1.5;   // seconds at stamina=0
+export const SPRINT_DUR_SLOPE = 0.5;   // added per stamina point
+
+export const REGEN_BASE  = 0.5;   // HP/s at stamina=0
+export const REGEN_SLOPE = 0.4;   // HP/s per stamina point
+
 export interface PlayerStats {
-  maxHP: number;      // accumulated from all listening + base 50
-  attackDmg: number;  // accumulated from all listening + base 10
+  maxHP: number;      // accumulated from all listening + BASE_HP
+  attackDmg: number;  // accumulated from all listening + BASE_ATTACK
   agility: number;    // from fast tracks (high BPM) → sprint speed + attack rate
-  stamina: number;    // from slow tracks (low BPM) → sprint duration
+  stamina: number;    // from slow tracks (low BPM) → sprint duration + regen
   attackRate: number; // seconds between auto-attack shots (derived from agility)
 }
 
-// Fast BPM (high) → agility + attack; slow BPM (low) → stamina + hp; unknown → even split.
+// Fast BPM (high) → agility; slow BPM (low) → stamina; unknown → even split.
 export const agilityShare = (bpm: number | null | undefined) =>
   bpm == null ? 0.5 : Math.max(0, Math.min(1, (bpm - 60) / 120));
 
@@ -44,8 +63,8 @@ export function derivePlayerStats(
     const pts = listened / DWELL_TARGET + (effective >= target ? target / DWELL_TARGET : 0);
     const bpm = (tracks[trackId] ?? pastTracks[trackId])?.models?.bpm;
     const f = agilityShare(bpm);
-    maxHP     += pts * 10;
-    attackDmg += pts * 2;
+    maxHP     += pts * HP_PER_PT;
+    attackDmg += pts * ATTACK_PER_PT;
     agility   += pts * f;
     stamina   += pts * (1 - f);
   }
@@ -58,14 +77,14 @@ export function derivePlayerStats(
   }
 
   return {
-    maxHP: 50 + maxHP,
-    attackDmg: 10 + attackDmg,
+    maxHP: BASE_HP + maxHP,
+    attackDmg: BASE_ATTACK + attackDmg,
     agility,
     stamina,
-    attackRate: Math.max(0.3, 0.8 - agility * 0.04),
+    attackRate: Math.max(ATTACK_RATE_MIN, ATTACK_RATE_BASE - agility * ATTACK_RATE_SLOPE),
   };
 }
 
-export const sprintMultiplier = (agility: number) => 2 + agility * 0.1;
-export const sprintMaxSeconds = (stamina: number) => 1.5 + stamina * 0.5;
-export const hpRegenRate = (stamina: number) => 0.5 + stamina * 0.4; // HP/s
+export const sprintMultiplier = (agility: number) => SPRINT_SPEED_BASE + agility * SPRINT_SPEED_SLOPE;
+export const sprintMaxSeconds = (stamina: number) => SPRINT_DUR_BASE + stamina * SPRINT_DUR_SLOPE;
+export const hpRegenRate      = (stamina: number) => REGEN_BASE + stamina * REGEN_SLOPE;

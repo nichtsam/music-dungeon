@@ -7,6 +7,14 @@ import {
   DWELL_TARGET,
   hpRegenRate,
   sprintMultiplier,
+  HP_PER_PT,
+  ATTACK_PER_PT,
+  ATTACK_RATE_BASE,
+  ATTACK_RATE_SLOPE,
+  SPRINT_SPEED_BASE,
+  SPRINT_SPEED_SLOPE,
+  REGEN_BASE,
+  REGEN_SLOPE,
 } from "../stats";
 import { paletteFor } from "../theme";
 
@@ -51,7 +59,7 @@ export default function StatsPanel() {
     if (!placed[trackId]) pushEntry(trackId, t, totalDwell[trackId] ?? 0);
   }
 
-  trackEntries.sort((a, b) => (b.pts + b.agility + b.stamina) - (a.pts + a.agility + a.stamina));
+  trackEntries.sort((a, b) => (b.pts * 12 + b.agility + b.stamina) - (a.pts * 12 + a.agility + a.stamina));
 
   const card = (color: string, icon: string, name: string, value: string, hint: string) => (
     <div key={name} style={{ background: "#0c0a14ee", border: `1px solid ${color}50`, borderRadius: 4, padding: "12px 14px", boxShadow: `0 0 10px ${color}18` }}>
@@ -76,9 +84,9 @@ export default function StatsPanel() {
 
         {/* Derived: Sprint Speed, Attack Rate, HP Regen — show formula */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
-          {card(CLR.sprint, "🏃", "SPRINT SPEED", `×${sprintMultiplier(s.agility).toFixed(1)}`, `agility × 0.1 + 2`)}
-          {card(CLR.rate,   "🔫", "ATTACK RATE",  `${s.attackRate.toFixed(1)}s`,                `0.8 − agility × 0.04`)}
-          {card(CLR.hp,     "💉", "HP REGEN",     `${hpRegenRate(s.stamina).toFixed(1)}/s`,     `stamina × 0.4 + 0.5`)}
+          {card(CLR.sprint, "🏃", "SPRINT SPEED", `×${sprintMultiplier(s.agility).toFixed(1)}`, `agility × ${SPRINT_SPEED_SLOPE} + ${SPRINT_SPEED_BASE}`)}
+          {card(CLR.rate,   "🔫", "ATTACK RATE",  `${s.attackRate.toFixed(1)}s`,                `${ATTACK_RATE_BASE} − agility × ${ATTACK_RATE_SLOPE}`)}
+          {card(CLR.hp,     "💉", "HP REGEN",     `${hpRegenRate(s.stamina).toFixed(1)}/s`,     `stamina × ${REGEN_SLOPE} + ${REGEN_BASE}`)}
         </div>
 
         {/* Track contributions */}
@@ -88,8 +96,8 @@ export default function StatsPanel() {
           <div key={t.id} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 10px", borderLeft: `3px solid ${t.glow}`, background: "#0c0a1480", marginBottom: 4, fontSize: 13 }}>
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎵 {t.title}</span>
             <span style={{ opacity: 0.4, fontSize: 11 }}>{t.bpm ? `${t.bpm}bpm` : "?bpm"}</span>
-            <span style={{ color: CLR.hp }}>+{t.pts.toFixed(1)}❤️</span>
-            <span style={{ color: CLR.attack }}>+{t.pts.toFixed(1)}⚔️</span>
+            <span style={{ color: CLR.hp }}>+{(t.pts * HP_PER_PT).toFixed(1)}❤️</span>
+            <span style={{ color: CLR.attack }}>+{(t.pts * ATTACK_PER_PT).toFixed(1)}⚔️</span>
             <span style={{ color: CLR.agility }}>+{t.agility.toFixed(1)}⚡</span>
             <span style={{ color: CLR.stamina }}>+{t.stamina.toFixed(1)}🫀</span>
           </div>
