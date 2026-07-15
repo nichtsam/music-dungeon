@@ -4,9 +4,10 @@ import { derivePlayerStats, sprintMaxSeconds, sprintMultiplier } from "../stats"
 import { GRID, ROOM_PX, type Rect } from "../roomLayout";
 import { TILE } from "../sprites";
 import {
-  type Enemy, type Projectile,
+  type Enemy, type Projectile, type LightningArc,
   moveEnemies, tickShooters, moveProjectiles, isOutOfBounds,
-  checkCollisions, PLAYER_PROJ_SPEED, spawnEnemies, roomTypeFor,
+  checkCollisions, spawnEnemies, roomTypeFor,
+  buildLightningChain,
 } from "../combat";
 
 export const CHAR = 34; // character collision box px
@@ -49,14 +50,15 @@ export function useGameLoop<T extends Focusable>({
   onFocusChange: (it: T | null) => void;
   staminaRef?: React.RefObject<HTMLDivElement | null>;
   hpBarRef?: React.RefObject<HTMLDivElement | null>;
-}): { enemiesRef: React.MutableRefObject<Enemy[]>; projectilesRef: React.MutableRefObject<Projectile[]>; playerHPRef: React.MutableRefObject<number>; dungeonMsRef: React.MutableRefObject<number> } {
+}): { enemiesRef: React.MutableRefObject<Enemy[]>; projectilesRef: React.MutableRefObject<Projectile[]>; playerHPRef: React.MutableRefObject<number>; dungeonMsRef: React.MutableRefObject<number>; lightningRef: React.MutableRefObject<LightningArc[]> } {
   const onFocusChangeRef = useRef(onFocusChange);
   onFocusChangeRef.current = onFocusChange;
 
   const enemiesRef = useRef<Enemy[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
+  const lightningRef = useRef<LightningArc[]>([]);
   const playerHPRef = useRef(-1); // -1 = uninitialised, set to maxHP on first combat tick
-  const autoAttackCdRef = useRef(0); // seconds until next player shot
+  const autoAttackCdRef = useRef(0); // seconds until next lightning strike
   const projIdSeqRef = useRef(0);
   const gameOverFiredRef = useRef(false); // prevent double-dispatch
   const waveRef = useRef(0);
@@ -170,30 +172,21 @@ export function useGameLoop<T extends Focusable>({
         projIdSeqRef.current += spawned.length;
         moved = afterShoot;
 
-        // auto-attack: fire at nearest enemy when cooldown elapsed
+        // auto-attack: chain lightning — instant damage across up to CHAIN_COUNT enemies
         autoAttackCdRef.current = Math.max(0, autoAttackCdRef.current - dt);
+        let lightningHits: Array<{ id: string; damage: number }> = [];
         if (autoAttackCdRef.current === 0 && moved.length > 0) {
           autoAttackCdRef.current = stats.attackRate;
-          const pcx = p.x + 17;
-          const pcy = p.y + 17;
-          let nearestDist = Infinity;
-          let target = moved[0];
-          for (const e of moved) {
-            const d = Math.hypot(e.x - pcx, e.y - pcy);
-            if (d < nearestDist) { nearestDist = d; target = e; }
-          }
-          const dx = target.x - pcx;
-          const dy = target.y - pcy;
-          const dist = Math.hypot(dx, dy) || 1;
-          spawned.push({
-            id: `p${projIdSeqRef.current++}`,
-            x: pcx, y: pcy,
-            vx: (dx / dist) * PLAYER_PROJ_SPEED,
-            vy: (dy / dist) * PLAYER_PROJ_SPEED,
-            fromPlayer: true,
-            damage: stats.attackDmg,
-          });
+          const pcx = p.x + 17, pcy = p.y + 17;
+          const { hits, arcs } = buildLightningChain(moved, pcx, pcy, stats.attackDmg);
+          lightningHits = hits;
+          lightningRef.current = [...lightningRef.current, ...arcs];
         }
+
+        // tick lightning arc TTL
+        lightningRef.current = lightningRef.current
+          .map((a) => ({ ...a, ttl: a.ttl - dt }))
+          .filter((a) => a.ttl > 0);
 
         // move projectiles — collision checked BEFORE OOB filter
         // so a shot that exits the room on its last frame still registers hits
@@ -206,10 +199,11 @@ export function useGameLoop<T extends Focusable>({
         const consumedSet = new Set(consumedProjIds);
         const chargerHitSet = new Set(chargerHitIds);
 
-        // apply enemy HP hits and mark charger impacts
+        // apply enemy HP hits (collision + lightning) and mark charger impacts
+        const allHits = [...enemyHits, ...lightningHits];
         const surviving = moved
           .map((e) => {
-            const hit = enemyHits.find((h) => h.id === e.id);
+            const hit = allHits.find((h) => h.id === e.id);
             const impacted = chargerHitSet.has(e.id);
             if (!hit && !impacted) return e;
             return { ...e, hp: e.hp - (hit?.damage ?? 0), chargeHit: impacted || e.chargeHit };
@@ -300,5 +294,5 @@ export function useGameLoop<T extends Focusable>({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef };
+  return { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef, lightningRef };
 }

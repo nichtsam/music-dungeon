@@ -199,6 +199,45 @@ export function tickShooters(
 }
 
 export const PLAYER_PROJ_SPEED = 420; // px/s
+export const CHAIN_COUNT = 3;          // max enemies per lightning strike
+export const CHAIN_DECAY = 0.6;        // damage multiplier per hop
+
+export interface LightningArc {
+  x1: number; y1: number;
+  x2: number; y2: number;
+  ttl: number; // seconds remaining (starts at LIGHTNING_TTL)
+}
+
+export const LIGHTNING_TTL = 0.18; // seconds the arc is visible
+
+// Returns the greedy nearest-neighbor chain starting at (ox, oy).
+// Each hop's damage is reduced by CHAIN_DECAY.
+export function buildLightningChain(
+  enemies: Enemy[],
+  ox: number,
+  oy: number,
+  dmg: number,
+): { hits: Array<{ id: string; damage: number }>; arcs: LightningArc[] } {
+  const hits: Array<{ id: string; damage: number }> = [];
+  const arcs: LightningArc[] = [];
+  const used = new Set<string>();
+  let cx = ox, cy = oy, d = dmg;
+  for (let hop = 0; hop < CHAIN_COUNT; hop++) {
+    let best: Enemy | null = null, bestDist = Infinity;
+    for (const e of enemies) {
+      if (used.has(e.id)) continue;
+      const dist = Math.hypot(e.x - cx, e.y - cy);
+      if (dist < bestDist) { bestDist = dist; best = e; }
+    }
+    if (!best) break;
+    hits.push({ id: best.id, damage: d });
+    arcs.push({ x1: cx, y1: cy, x2: best.x, y2: best.y, ttl: LIGHTNING_TTL });
+    used.add(best.id);
+    cx = best.x; cy = best.y;
+    d *= CHAIN_DECAY;
+  }
+  return { hits, arcs };
+}
 
 export function moveProjectiles(projectiles: Projectile[], dt: number): Projectile[] {
   return projectiles.map((p) => ({ ...p, x: p.x + p.vx * dt, y: p.y + p.vy * dt }));

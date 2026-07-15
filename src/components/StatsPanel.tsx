@@ -5,7 +5,6 @@ import {
   agilityShare,
   derivePlayerStats,
   DWELL_TARGET,
-  sprintMaxSeconds,
   sprintMultiplier,
 } from "../stats";
 import { paletteFor } from "../theme";
@@ -36,7 +35,7 @@ export default function StatsPanel() {
     const f = agilityShare(t.models?.bpm);
     trackEntries.push({
       id: trackId, title: t.title, bpm: t.models?.bpm,
-      glow: paletteFor(t.models).glow,
+      glow: paletteFor(t.models as Parameters<typeof paletteFor>[0]).glow,
       pts,                   // goes to both maxHP and attackDmg
       agility: pts * f,
       stamina: pts * (1 - f),

@@ -227,7 +227,7 @@ export default function Room2D() {
   const interactRef = useRef(doInteract);
   interactRef.current = doInteract;
 
-  const { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef } = useGameLoop({
+  const { enemiesRef, projectilesRef, playerHPRef, dungeonMsRef, lightningRef } = useGameLoop({
     pos, charRef, cameraRef, scaleRef, viewportRef,
     leavingRef, interactablesRef, interactRef,
     onFocusChange: setFocus,
@@ -375,7 +375,7 @@ export default function Room2D() {
 
         {/* combat entities: canvas reads enemiesRef/projectilesRef each RAF */}
         {roomType === "combat" && (
-          <CombatOverlay enemiesRef={enemiesRef} projectilesRef={projectilesRef} />
+          <CombatOverlay enemiesRef={enemiesRef} projectilesRef={projectilesRef} lightningRef={lightningRef} />
         )}
 
         {/* exits: north = native 2x2 wooden door; S/E/W = archway zones;
