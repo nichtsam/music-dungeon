@@ -16,9 +16,11 @@ export default function AudioPlayer() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // map tabs will get their own music later; room audio yields while map is open
-    if (view === "map") el.pause();
-    else el.play().catch(() => {}); // autoplay may be blocked until first gesture
+    // map tabs will get their own music later; room audio yields while map is open.
+    // menu view keeps audio playing — ESC mid-game shouldn't cut the music.
+    // On fresh load, audio starts only after the user clicks Continue (user gesture).
+    if (view === "map") { el.pause(); return; }
+    el.play().catch(() => {}); // blocked on first load; Continue click unlocks it
   }, [view, src]);
 
   useEffect(() => {

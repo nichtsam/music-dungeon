@@ -13,7 +13,7 @@ import {
   type TrackInfo,
 } from "./dungeon";
 
-export type View = "entrance" | "dungeon" | "map";
+export type View = "entrance" | "dungeon" | "map" | "menu";
 export type MapMode = "floor" | "structure" | "attunements" | "stats";
 
 interface DungeonState {
@@ -61,9 +61,12 @@ function hydrate(): Partial<DungeonState> {
     if (!raw) return {};
     const s = JSON.parse(raw);
     if (!s.currentKey || !s.cells?.[s.currentKey]) return {};
+    // If the current room never finished loading exits (mid-load refresh),
+    // drop the dungeon — the player would be stuck with no doors.
+    if (!s.cells[s.currentKey].exits) return {};
     for (const t of Object.values(s.tracks ?? {}) as TrackInfo[])
       if (t.models) primeModelsCache(t.id, t.models);
-    return { ...s, view: "dungeon" as View };
+    return { ...s, view: "menu" as View };
   } catch {
     return {};
   }
@@ -238,9 +241,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil, gameOver } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil, gameOver }),
   );
 });

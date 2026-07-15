@@ -7,7 +7,6 @@ import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import TrackHUD from "./TrackHUD";
 import CombatOverlay from "./CombatOverlay";
-import GameOver from "./GameOver";
 import { SPR, TILE, spriteStyle } from "../sprites";
 import { hashKey, reciprocalDoors, type CellExit, type ExitSlot } from "../dungeon";
 import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
@@ -85,8 +84,8 @@ export default function Room2D() {
   const {
     cells, tracks, currentKey, visitedKeys, discovered, searched,
     loading, error, reset, discover, markSearched,
-    dwell, placed, durations, totalDwell, runSeed, lockUntil, gameOver,
-    setLockUntil, setGameOver: _setGameOver, setBonusRoom,
+    dwell, placed, durations, totalDwell, runSeed, lockUntil,
+    setLockUntil, setBonusRoom,
   } = useDungeon();
   const enterRoom = useDungeon((s) => s.enterRoom);
   const cell = currentKey ? cells[currentKey] : null;
@@ -280,7 +279,6 @@ export default function Room2D() {
   }, [currentKey, lockUntil]);
 
   if (!cell || !track || !layout) return null;
-  if (gameOver) return <GameOver />;
   scaleRef.current = scale; // keep RAF closure fresh without re-subscribing
   const pal = paletteFor(track.models);
   const roomType = currentKey ? roomTypeFor(currentKey, runSeed) : "combat";
