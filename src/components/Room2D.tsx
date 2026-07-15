@@ -15,7 +15,7 @@ import { useFloorFlourish } from "../hooks/useFloorFlourish";
 import { useRoomScale } from "../hooks/useRoomScale";
 import { useTilePattern } from "../hooks/useTilePattern";
 import { derivePlayerStats } from "../stats";
-import { roomTypeFor, spawnEnemies } from "../combat";
+import { roomTypeFor, spawnEnemies, difficultyFor } from "../combat";
 
 // ponytail: SIZE is the viewport reference (14 tiles), kept separate from ROOM_PX (42 tiles)
 const TRANSITION_MS = 350;
@@ -239,7 +239,7 @@ export default function Room2D() {
     if (!currentKey) return;
     const rtype = roomTypeFor(currentKey, runSeed);
     if (rtype === "combat") {
-      enemiesRef.current = spawnEnemies(currentKey, pos.current.x, pos.current.y);
+      enemiesRef.current = spawnEnemies(currentKey, pos.current.x, pos.current.y, 0, difficultyFor(dungeonMsRef.current));
       projectilesRef.current = [];
       if (!lockUntil[currentKey]) {
         setLockUntil(currentKey, dungeonMsRef.current + 30_000);

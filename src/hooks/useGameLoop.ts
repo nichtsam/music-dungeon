@@ -7,7 +7,7 @@ import {
   type Enemy, type Projectile, type LightningArc,
   moveEnemies, tickShooters, moveProjectiles, isOutOfBounds,
   checkCollisions, spawnEnemies, roomTypeFor,
-  buildLightningChain,
+  buildLightningChain, difficultyFor,
 } from "../combat";
 
 export const CHAR = 34; // character collision box px
@@ -254,7 +254,7 @@ export function useGameLoop<T extends Focusable>({
           spawnTimerRef.current = 5;
           if (enemiesRef.current.length < 15) {
             const wave = ++waveRef.current;
-            enemiesRef.current = [...enemiesRef.current, ...spawnEnemies(state.currentKey, p.x, p.y, wave)];
+            enemiesRef.current = [...enemiesRef.current, ...spawnEnemies(state.currentKey, p.x, p.y, wave, difficultyFor(dungeonMsRef.current))];
           }
         }
       }

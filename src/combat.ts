@@ -14,12 +14,21 @@ export interface Enemy {
   y: number;
   hp: number;
   maxHp: number;
-  shootCooldown: number; // shooters: next shot; chargers: pause before next sprint
-  chargeTimeLeft?: number; // chargers only: remaining sprint seconds (0/undefined = paused)
-  chargeDx?: number; // locked sprint direction (normalised), set at charge start
+  damage: number;      // baked at spawn — charger impact or shooter projectile dmg
+  speed: number;       // charger sprint px/s; shooter walk speed is fixed
+  baseCooldown: number; // shooter reset value after each shot (shorter = faster)
+  shootCooldown: number;
+  chargeTimeLeft?: number;
+  chargeDx?: number;
   chargeDy?: number;
-  chargeHit?: boolean; // true after landing one impact per sprint — prevents multi-frame damage
+  chargeHit?: boolean;
 }
+
+// Difficulty grows with dungeon time — stay longer, enemies get harder.
+// Player must keep listening to stay ahead; neglecting dwell falls behind.
+// At DIFFICULTY_SCALE_MS, enemy stats double (+100%).
+export const DIFFICULTY_SCALE_MS = 300_000; // 5 minutes to double
+export const difficultyFor = (dungeonMs: number) => 1 + dungeonMs / DIFFICULTY_SCALE_MS;
 
 export interface Projectile {
   id: string;
@@ -53,7 +62,7 @@ const EDGE_INSET_HI = 5 * TILE; // max distance from wall
 export const ENEMY_RADIUS = 22;
 export const PLAYER_RADIUS = 14; // slightly forgiving vs CHAR/2 = 17
 
-export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number, wave = 0): Enemy[] {
+export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number, wave = 0, difficulty = 1): Enemy[] {
   const h = hashKey(cellKey);
   const count = 6 + (h % 3); // 6–8
 
@@ -88,9 +97,13 @@ export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number
     else if (side === 2) { x = SPAWN_LO + inset; y = along; }
     else { x = SPAWN_HI - inset; y = along; }
     const kind = kinds[i];
-    const hp = kind === "charger" ? 20 : 15;
-    const cooldown = kind === "charger" ? 0.5 + (seed % 10) * 0.15 : 2.5;
-    enemies.push({ id: `${cellKey}:${i}:${wave}`, kind, x, y, hp, maxHp: hp, shootCooldown: cooldown });
+    const sqrtD = Math.sqrt(difficulty);
+    const hp = Math.round((kind === "charger" ? 20 : 15) * difficulty);
+    const dmg = Math.round((kind === "charger" ? 28 : 15) * difficulty);
+    const spd = Math.round(CHARGE_SPEED * sqrtD);
+    const baseCooldown = kind === "charger" ? CHARGE_PAUSE : SHOOTER_COOLDOWN / sqrtD;
+    const initCooldown = kind === "charger" ? 0.5 + (seed % 10) * 0.15 : baseCooldown;
+    enemies.push({ id: `${cellKey}:${i}:${wave}`, kind, x, y, hp, maxHp: hp, damage: dmg, speed: spd, baseCooldown, shootCooldown: initCooldown });
   }
   return enemies;
 }
@@ -110,8 +123,8 @@ export function moveEnemies(enemies: Enemy[], px: number, py: number, dt: number
     let nx = e.x, ny = e.y;
     if (e.kind === "charger") {
       if ((e.chargeTimeLeft ?? 0) > 0 && e.chargeDx !== undefined) {
-        nx += e.chargeDx * CHARGE_SPEED * dt;
-        ny += (e.chargeDy ?? 0) * CHARGE_SPEED * dt;
+        nx += e.chargeDx * e.speed * dt;
+        ny += (e.chargeDy ?? 0) * e.speed * dt;
       }
     } else {
       const dx = pcx - e.x, dy = pcy - e.y;
@@ -191,9 +204,9 @@ export function tickShooters(
       vx: (dx / dist) * SHOOTER_PROJ_SPEED,
       vy: (dy / dist) * SHOOTER_PROJ_SPEED,
       fromPlayer: false,
-      damage: 15,
+      damage: e.damage,
     });
-    return { ...e, shootCooldown: SHOOTER_COOLDOWN };
+    return { ...e, shootCooldown: e.baseCooldown };
   });
   return { enemies: updated, spawned };
 }
@@ -249,7 +262,6 @@ export function isOutOfBounds(p: Projectile): boolean {
 
 const PLAYER_PROJ_RADIUS = 10; // matches canvas render size
 const ENEMY_PROJ_RADIUS = 8;
-const CHARGE_IMPACT_DMG = 28; // single hit on sprint contact
 
 export function checkCollisions(
   enemies: Enemy[],
@@ -268,7 +280,7 @@ export function checkCollisions(
   for (const e of enemies) {
     if (e.kind === "charger" && (e.chargeTimeLeft ?? 0) > 0 && !e.chargeHit) {
       if (Math.hypot(e.x - pcx, e.y - pcy) < ENEMY_RADIUS + PLAYER_RADIUS) {
-        playerDmg += CHARGE_IMPACT_DMG;
+        playerDmg += e.damage;
         chargerHitIds.push(e.id);
       }
     }

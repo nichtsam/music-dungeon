@@ -67,8 +67,8 @@ describe("spawnEnemies", () => {
 // --- moveEnemies -----------------------------------------------------------
 
 describe("moveEnemies", () => {
-  const charger: Enemy = { id: "c", kind: "charger", x: 400, y: 400, hp: 30, maxHp: 30, shootCooldown: 0 };
-  const shooter: Enemy = { id: "s", kind: "shooter", x: 400, y: 400, hp: 20, maxHp: 20, shootCooldown: 3 };
+  const charger: Enemy = { id: "c", kind: "charger", x: 400, y: 400, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0 };
+  const shooter: Enemy = { id: "s", kind: "shooter", x: 400, y: 400, hp: 20, maxHp: 20, damage: 15, speed: 620, baseCooldown: 2.5, shootCooldown: 3 };
 
   it("charger sprints toward player when chargeTimeLeft > 0", () => {
     const sprinting = { ...charger, chargeTimeLeft: 0.5, chargeDx: 1, chargeDy: 1 }; // locked NE direction
@@ -99,26 +99,26 @@ describe("moveEnemies", () => {
 
 describe("checkCollisions", () => {
   it("charger sprint impact damages player once", () => {
-    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, shootCooldown: 0, chargeTimeLeft: 0.5, chargeHit: false };
+    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0, chargeTimeLeft: 0.5, chargeHit: false };
     const { playerDmg, chargerHitIds } = checkCollisions([charger], [], 0, 0);
     expect(playerDmg).toBeGreaterThan(0);
     expect(chargerHitIds).toContain("c");
   });
 
   it("charger does not damage when paused", () => {
-    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, shootCooldown: 0 };
+    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0 };
     const { playerDmg } = checkCollisions([charger], [], 0, 0);
     expect(playerDmg).toBe(0);
   });
 
   it("charger does not double-hit same sprint", () => {
-    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, shootCooldown: 0, chargeTimeLeft: 0.5, chargeHit: true };
+    const charger: Enemy = { id: "c", kind: "charger", x: 17, y: 17, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0, chargeTimeLeft: 0.5, chargeHit: true };
     const { playerDmg } = checkCollisions([charger], [], 0, 0);
     expect(playerDmg).toBe(0);
   });
 
   it("player projectile reduces enemy HP via enemyHits", () => {
-    const enemy: Enemy = { id: "e", kind: "charger", x: 100, y: 100, hp: 30, maxHp: 30, shootCooldown: 0 };
+    const enemy: Enemy = { id: "e", kind: "charger", x: 100, y: 100, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0 };
     const proj: Projectile = { id: "p", x: 100, y: 100, vx: 0, vy: 0, fromPlayer: true, damage: 10 };
     const { enemyHits, consumedProjIds } = checkCollisions([enemy], [proj], 500, 500);
     expect(enemyHits.length).toBe(1);
@@ -158,20 +158,20 @@ describe("isOutOfBounds", () => {
 
 describe("tickShooters", () => {
   it("spawns a projectile when cooldown expires", () => {
-    const shooter: Enemy = { id: "s", kind: "shooter", x: 200, y: 200, hp: 20, maxHp: 20, shootCooldown: 0.01 };
+    const shooter: Enemy = { id: "s", kind: "shooter", x: 200, y: 200, hp: 20, maxHp: 20, damage: 15, speed: 620, baseCooldown: 2.5, shootCooldown: 0.01 };
     const { spawned } = tickShooters([shooter], 500, 500, 1, 0);
     expect(spawned.length).toBe(1);
     expect(spawned[0].fromPlayer).toBe(false);
   });
 
   it("does not spawn before cooldown expires", () => {
-    const shooter: Enemy = { id: "s", kind: "shooter", x: 200, y: 200, hp: 20, maxHp: 20, shootCooldown: 2 };
+    const shooter: Enemy = { id: "s", kind: "shooter", x: 200, y: 200, hp: 20, maxHp: 20, damage: 15, speed: 620, baseCooldown: 2.5, shootCooldown: 2 };
     const { spawned } = tickShooters([shooter], 500, 500, 0.1, 0);
     expect(spawned.length).toBe(0);
   });
 
   it("chargers advance their charge state", () => {
-    const charger: Enemy = { id: "c", kind: "charger", x: 200, y: 200, hp: 30, maxHp: 30, shootCooldown: 0 };
+    const charger: Enemy = { id: "c", kind: "charger", x: 200, y: 200, hp: 30, maxHp: 30, damage: 28, speed: 620, baseCooldown: 2.5, shootCooldown: 0 };
     const { spawned, enemies } = tickShooters([charger], 500, 500, 1, 0);
     expect(spawned.length).toBe(0); // chargers never spawn projectiles
     expect(enemies[0].chargeTimeLeft).toBeGreaterThan(0); // cooldown expired → started sprint
