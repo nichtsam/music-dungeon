@@ -9,42 +9,60 @@ export const completenessOf = (dwell: number | undefined, target = DWELL_TARGET)
   Math.min(1, (dwell ?? 0) / target);
 
 export interface PlayerStats {
-  agility: number;
-  stamina: number;
-  maxHP: number;
-  attackRate: number; // seconds between auto-attack shots
-  attackDmg: number;
+  maxHP: number;      // accumulated from all listening + base 50
+  attackDmg: number;  // accumulated from all listening + base 10
+  agility: number;    // from fast tracks (high BPM) → sprint speed + attack rate
+  stamina: number;    // from slow tracks (low BPM) → sprint duration
+  attackRate: number; // seconds between auto-attack shots (derived from agility)
 }
 
-// Fast tracks feed agility, slow tracks feed stamina; unknown bpm splits evenly.
+// Fast BPM (high) → agility + attack; slow BPM (low) → stamina + hp; unknown → even split.
 export const agilityShare = (bpm: number | null | undefined) =>
   bpm == null ? 0.5 : Math.max(0, Math.min(1, (bpm - 60) / 120));
 
-// 1 point of total stats per attuned track (dwell >= target).
-// totalDwell: trackId → cumulative dwell across past runs (meta-progression).
+// Each stat has its own independent calculation from listening time:
+//   hp, attack  → all listening seconds, BPM-agnostic
+//   agility     → listening seconds × agilityShare(BPM)   (high BPM gives more)
+//   stamina     → listening seconds × (1 − agilityShare)  (low BPM gives more)
+// Completion bonus (track/DWELL_TARGET extra) applies to each independently.
+// pastTracks: track info from treeNodes for historical runs (BPM source).
 export function derivePlayerStats(
   dwell: Record<string, number>,
   placed: Record<string, string>,
   tracks: Record<string, TrackInfo>,
   durations: Record<string, number> = {},
   totalDwell: Record<string, number> = {},
+  pastTracks: Record<string, TrackInfo> = {},
 ): PlayerStats {
-  let agility = 0;
-  let stamina = 0;
-  for (const [trackId, cellKey] of Object.entries(placed)) {
+  let maxHP = 0, attackDmg = 0, agility = 0, stamina = 0;
+
+  function accumulate(trackId: string, effective: number) {
     const target = durations[trackId] ?? DWELL_TARGET;
-    const effective = Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0);
-    if (effective < target) continue;
-    const share = agilityShare(tracks[trackId]?.models?.bpm);
-    agility += share;
-    stamina += 1 - share;
+    const listened = Math.min(effective, target);
+    if (listened === 0) return;
+    // ponytail: bonus doubles points on full listen; long tracks earn more than short ones
+    const pts = listened / DWELL_TARGET + (effective >= target ? target / DWELL_TARGET : 0);
+    const bpm = (tracks[trackId] ?? pastTracks[trackId])?.models?.bpm;
+    const f = agilityShare(bpm);
+    maxHP     += pts * 10;
+    attackDmg += pts * 2;
+    agility   += pts * f;
+    stamina   += pts * (1 - f);
   }
+
+  for (const [trackId, cellKey] of Object.entries(placed)) {
+    accumulate(trackId, Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0));
+  }
+  for (const [trackId, effective] of Object.entries(totalDwell)) {
+    if (!placed[trackId]) accumulate(trackId, effective);
+  }
+
   return {
+    maxHP: 50 + maxHP,
+    attackDmg: 10 + attackDmg,
     agility,
     stamina,
-    maxHP: 50 + stamina * 10,
     attackRate: Math.max(0.3, 0.8 - agility * 0.04),
-    attackDmg: 10 + (agility + stamina) * 2,
   };
 }
 

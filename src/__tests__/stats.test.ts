@@ -28,7 +28,7 @@ describe("completenessOf", () => {
 // --- agilityShare ---------------------------------------------------------
 
 describe("agilityShare", () => {
-  it("maps slow tracks to stamina, fast to agility", () => {
+  it("maps slow tracks to 0, fast to 1", () => {
     expect(agilityShare(60)).toBe(0);
     expect(agilityShare(120)).toBe(0.5);
     expect(agilityShare(180)).toBe(1);
@@ -44,74 +44,103 @@ describe("agilityShare", () => {
 
 // --- derivePlayerStats ------------------------------------------------------
 
-// helper: check only the core attunement axes (not combat-derived fields)
-const axes = (s: ReturnType<typeof derivePlayerStats>) => ({ agility: s.agility, stamina: s.stamina });
-
 describe("derivePlayerStats", () => {
   const tracks = {
-    fast: T("fast", 180),
-    slow: T("slow", 60),
-    mid: T("mid", 150),
+    fast: T("fast", 180),  // agilityShare=1
+    slow: T("slow", 60),   // agilityShare=0
+    mid:  T("mid",  150),  // agilityShare=0.75
   };
   const placed = { fast: "0,0,0", slow: "1,0,0", mid: "2,0,0" };
 
-  it("returns zero with no dwell", () => {
-    expect(axes(derivePlayerStats({}, placed, tracks))).toEqual({ agility: 0, stamina: 0 });
+  it("returns base values with no dwell", () => {
+    const s = derivePlayerStats({}, placed, tracks);
+    expect(s.maxHP).toBe(50);
+    expect(s.attackDmg).toBe(10);
+    expect(s.agility).toBe(0);
+    expect(s.stamina).toBe(0);
   });
 
-  it("ignores rooms below DWELL_TARGET", () => {
-    const dwell = { "0,0,0": DWELL_TARGET - 1 };
-    expect(axes(derivePlayerStats(dwell, placed, tracks))).toEqual({ agility: 0, stamina: 0 });
-  });
-
-  it("grants 1 point per attuned track, split by bpm", () => {
+  it("accumulates maxHP and attackDmg from all tracks regardless of BPM", () => {
+    // fast+slow each 30s: pts=2 each → maxHP = 50+2*10+2*10=90, attackDmg = 10+2*2+2*2=18
     const dwell = { "0,0,0": DWELL_TARGET, "1,0,0": DWELL_TARGET };
-    expect(axes(derivePlayerStats(dwell, placed, tracks))).toEqual({
-      agility: 1, // fast: 180bpm -> all agility
-      stamina: 1, // slow: 60bpm -> all stamina
-    });
+    const s = derivePlayerStats(dwell, placed, tracks);
+    expect(s.maxHP).toBe(90);
+    expect(s.attackDmg).toBe(18);
+    expect(s.agility).toBe(2);
+    expect(s.stamina).toBe(2);
   });
 
-  it("sums fractional splits across tracks", () => {
-    const dwell = { "2,0,0": DWELL_TARGET * 3 }; // extra dwell doesn't stack
-    expect(axes(derivePlayerStats(dwell, placed, tracks))).toEqual({
-      agility: 0.75, // 150bpm
-      stamina: 0.25,
-    });
+  it("BPM weights agility and stamina independently", () => {
+    // mid track (150bpm, f=0.75): pts=2 → maxHP=50+20=70, atkDmg=10+4=14, agi=1.5, stam=0.5
+    const dwell = { "2,0,0": DWELL_TARGET * 3 };
+    const s = derivePlayerStats(dwell, placed, tracks);
+    expect(s.maxHP).toBe(70);
+    expect(s.attackDmg).toBe(14);
+    expect(s.agility).toBe(1.5);
+    expect(s.stamina).toBe(0.5);
   });
 
-  it("splits evenly for tracks with missing models", () => {
+  it("partial listen accumulates proportionally", () => {
+    // 29s fast: pts=29/30 → maxHP=50+pts*10, attackDmg=10+pts*2, agility=pts
+    const dwell = { "0,0,0": DWELL_TARGET - 1 };
+    const s = derivePlayerStats(dwell, placed, tracks);
+    const pts = (DWELL_TARGET - 1) / DWELL_TARGET;
+    expect(s.maxHP).toBeCloseTo(50 + pts * 10);
+    expect(s.attackDmg).toBeCloseTo(10 + pts * 2);
+    expect(s.agility).toBeCloseTo(pts);
+    expect(s.stamina).toBe(0);
+  });
+
+  it("unknown BPM gives agility = stamina = 0.5 × pts", () => {
+    // bare track (f=0.5): pts=2 → maxHP=50+20=70, atkDmg=10+4=14, agi=1, stam=1
     const dwell = { "0,0,0": DWELL_TARGET };
     const bare = { fast: { id: "fast", title: "fast" } };
-    expect(axes(derivePlayerStats(dwell, { fast: "0,0,0" }, bare))).toEqual({
-      agility: 0.5,
-      stamina: 0.5,
-    });
+    const s = derivePlayerStats(dwell, { fast: "0,0,0" }, bare);
+    expect(s.maxHP).toBe(70);
+    expect(s.attackDmg).toBe(14);
+    expect(s.agility).toBe(1);
+    expect(s.stamina).toBe(1);
   });
 
-  it("counts historic attunement from totalDwell even without current dwell", () => {
+  it("counts historic attunement from totalDwell", () => {
     const totalDwell = { fast: DWELL_TARGET + 5 };
-    expect(axes(derivePlayerStats({}, placed, tracks, {}, totalDwell))).toEqual({
-      agility: 1,
-      stamina: 0,
-    });
+    const s = derivePlayerStats({}, placed, tracks, {}, totalDwell);
+    expect(s.maxHP).toBe(70);      // 50 + 2*10
+    expect(s.attackDmg).toBe(14);  // 10 + 2*2
+    expect(s.agility).toBe(2);
+    expect(s.stamina).toBe(0);
   });
 
-  it("derives combat stats from agility and stamina", () => {
-    const dwell = { "0,0,0": DWELL_TARGET, "1,0,0": DWELL_TARGET }; // 1 agility, 1 stamina
+  it("counts past-run tracks via pastTracks when not in placed", () => {
+    const totalDwell = { slow: DWELL_TARGET };
+    const pastTracks = { slow: T("slow", 60) };
+    const s = derivePlayerStats({}, {}, {}, {}, totalDwell, pastTracks);
+    expect(s.maxHP).toBe(70);
+    expect(s.attackDmg).toBe(14);
+    expect(s.agility).toBe(0);
+    expect(s.stamina).toBe(2);
+  });
+
+  it("duration bonus scales with track length", () => {
+    // fast 60s track: pts=4 → maxHP=50+40=90, atkDmg=10+8=18, agi=4
+    const s = derivePlayerStats({ "0,0,0": 60 }, { fast: "0,0,0" }, tracks, { fast: 60 });
+    expect(s.maxHP).toBe(90);
+    expect(s.attackDmg).toBe(18);
+    expect(s.agility).toBe(4);
+    expect(s.stamina).toBe(0);
+  });
+
+  it("attackRate derived from agility, clamped at 0.3s", () => {
+    // fast+slow each 30s: agility=2 → rate = 0.8-2*0.04 = 0.72
+    const dwell = { "0,0,0": DWELL_TARGET, "1,0,0": DWELL_TARGET };
     const s = derivePlayerStats(dwell, placed, tracks);
-    expect(s.maxHP).toBe(60); // 50 + 1*10
-    expect(s.attackRate).toBeCloseTo(0.76); // 0.8 - 1*0.04
-    expect(s.attackDmg).toBe(14); // 10 + (1+1)*2
-  });
+    expect(s.attackRate).toBeCloseTo(0.72);
 
-  it("attackRate clamps at 0.3s minimum", () => {
-    // need 12.5 agility to hit the floor: 0.8 - 12.5*0.04 = 0.3
+    // 20 fast tracks: agility=40 → clamped to 0.3
     const manyFast = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`t${i}`, `${i},0,0`]));
     const fastTracks = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`t${i}`, T(`t${i}`, 180)]));
     const fullDwell = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`${i},0,0`, DWELL_TARGET]));
-    const s = derivePlayerStats(fullDwell, manyFast, fastTracks);
-    expect(s.attackRate).toBeGreaterThanOrEqual(0.3);
+    expect(derivePlayerStats(fullDwell, manyFast, fastTracks).attackRate).toBeGreaterThanOrEqual(0.3);
   });
 });
 
