@@ -36,9 +36,6 @@ export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: s
 
   const { nodes, links, slabs, slabW, slabH } = useMemo(() => {
     const visited = new Set(visitedKeys);
-    const trail = new Set(
-      visitedKeys.slice(1).map((k, i) => edgeKey(visitedKeys[i], k)),
-    );
     // center on the global bbox
     const ps = visitedKeys.map((k) => cells[k].pos);
     const mid = (axis: number) => {
@@ -69,7 +66,7 @@ export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: s
     });
     const byKey = new Map(nodes.map((n) => [n.key, n]));
     const seen = new Set<string>();
-    const links: { p1: V3; p2: V3; portal: boolean; onTrail: boolean }[] = [];
+    const links: { p1: V3; p2: V3; portal: boolean }[] = [];
     for (const key of visitedKeys) {
       for (const ex of cells[key]?.exits ?? []) {
         if (!visited.has(ex.toKey)) continue;
@@ -82,7 +79,6 @@ export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: s
           p1: byKey.get(key)!.pos,
           p2: byKey.get(ex.toKey)!.pos,
           portal: ex.kind === "portal",
-          onTrail: ex.kind === "door" && trail.has(k),
         });
       }
     }
@@ -193,21 +189,12 @@ export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: s
         {links.map((l, i) => {
           const color = l.portal
             ? "repeating-linear-gradient(90deg, #c890ff 0 6px, transparent 6px 12px)"
-            : l.onTrail
-              ? "linear-gradient(90deg, #ffd700, #ffb700)"
-              : "#5a4a8a";
-          const base = lineStyle(l.p1, l.p2, l.onTrail ? 4 : 2.5);
+            : "#5a4a8a";
+          const base = lineStyle(l.p1, l.p2, 2.5);
           return (
             <Fragment key={i}>
-              <div style={{ ...base, background: color, opacity: l.onTrail ? 0.95 : 0.6 }} />
-              <div
-                style={{
-                  ...base,
-                  background: color,
-                  opacity: (l.onTrail ? 0.95 : 0.6) * 0.8,
-                  transform: base.transform + " rotateX(90deg)",
-                }}
-              />
+              <div style={{ ...base, background: color, opacity: 0.6 }} />
+              <div style={{ ...base, background: color, opacity: 0.48, transform: base.transform + " rotateX(90deg)" }} />
             </Fragment>
           );
         })}
@@ -262,8 +249,7 @@ export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: s
         🏰 DUNGEON STRUCTURE — directions match the game
         <br />
         <span style={{ color: "#ffd700" }}>N</span> gold on the ground ·{" "}
-        floors stack vertically · <span style={{ color: "#ffd700" }}>━</span> your path ·{" "}
-        <span style={{ color: "#c890ff" }}>┅</span> secret passage
+        floors stack vertically · <span style={{ color: "#c890ff" }}>┅</span> secret passage
         <br />
         drag rotate · right-drag / shift-drag pan · scroll zoom · double-click recenter
       </div>
