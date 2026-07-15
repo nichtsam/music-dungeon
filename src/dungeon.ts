@@ -48,6 +48,9 @@ const MAX_EXITS = 6;
 const MAX_PORTALS = 2;
 // ponytail: threshold tuned against the mock score distribution; revisit with real API data
 export const DOOR_THRESHOLD = 0.72;
+// ponytail: ceiling tuned by feel on real API data alongside DOOR_THRESHOLD
+export const DOOR_CEILING = 0.95; // above = duplicate/remaster, not a neighbor
+const normTitle = (t: string) => t.toLowerCase().replace(/\.mp3$/, "").trim();
 
 // small deterministic hash (djb2) for per-room procedural choices
 export function hashKey(s: string): number {
@@ -62,6 +65,39 @@ export interface GenResult {
   newPlaced: Record<string, string>;
 }
 
+// reciprocal doors: a generated neighbor with a door facing us gives us the
+// matching door back. Also used by Room2D as an escape hatch when exit
+// generation fails mid-flight (API error) — the player is never trapped.
+export function reciprocalDoors(
+  key: string,
+  cells: Record<string, RoomCell>,
+  tracks: Record<string, TrackInfo>,
+  selfModels: TrackModels | undefined,
+): { doors: CellExit[]; freeSlots: ExitSlot[] } {
+  const pos = parseKey(key);
+  const doors: CellExit[] = [];
+  const freeSlots: ExitSlot[] = [];
+  for (const slot of SLOTS) {
+    const nKey = keyOf(shift(pos, slot));
+    const n = cells[nKey];
+    if (!n) {
+      freeSlots.push(slot);
+      continue;
+    }
+    const facing = n.exits?.find((e) => e.kind === "door" && e.toKey === key);
+    if (facing)
+      doors.push({
+        kind: "door",
+        slot,
+        toKey: nKey,
+        toTitle: tracks[n.trackId]?.title ?? n.trackId,
+        score: facing.score,
+        label: doorLabel(selfModels, tracks[n.trackId]?.models, facing.score),
+      });
+  }
+  return { doors, freeSlots };
+}
+
 export function generateExits(
   key: string,
   cells: Record<string, RoomCell>,
@@ -73,34 +109,24 @@ export function generateExits(
 ): GenResult {
   const pos = parseKey(key);
   const selfId = cells[key].trackId;
-  const exits: CellExit[] = [];
 
-  // 1. reciprocal doors: a generated neighbor with a door facing us gives us
-  //    the matching door. Occupied neighbors without one stay sealed forever.
-  const freeSlots: ExitSlot[] = [];
-  for (const slot of SLOTS) {
-    const nKey = keyOf(shift(pos, slot));
-    const n = cells[nKey];
-    if (!n) {
-      freeSlots.push(slot);
-      continue;
-    }
-    const facing = n.exits?.find((e) => e.kind === "door" && e.toKey === key);
-    if (facing)
-      exits.push({
-        kind: "door",
-        slot,
-        toKey: nKey,
-        toTitle: tracks[n.trackId]?.title ?? n.trackId,
-        score: facing.score,
-        label: doorLabel(selfModels, tracks[n.trackId]?.models, facing.score),
-      });
-  }
+  // 1. reciprocal doors; occupied neighbors without one stay sealed forever.
+  const { doors, freeSlots } = reciprocalDoors(key, cells, tracks, selfModels);
+  const exits: CellExit[] = doors;
 
   // 2. walk the similar list: placed track -> portal, new track -> placement.
-  // Similarity gates the door count: weak matches make no exits, so isolated
-  // tracks become dead ends (the reciprocal door above always leads back out).
-  const eligible = similar.filter((it) => it.score >= DOOR_THRESHOLD);
+  // Similarity gates the door count both ways: weak matches make no exits
+  // (dead ends), near-identical ones (duplicate uploads, remasters) are
+  // skipped for variety — as are same-titled candidates, keeping the best.
+  const selfTitle = normTitle(tracks[selfId]?.title ?? "");
+  const seenTitles = new Set(selfTitle ? [selfTitle] : []);
+  const eligible = similar.filter((it) => {
+    if (it.score < DOOR_THRESHOLD || it.score > DOOR_CEILING) return false;
+    const t = normTitle(it.track.title);
+    if (t && seenTitles.has(t)) return false;
+    if (t) seenTitles.add(t);
+    return true;
+  });
   const list =
     key === "0,0,0" && eligible.length === 0
       ? similar.slice(0, 1) // the dungeon always offers one way forward

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import { SPR, TILE, spriteStyle } from "../sprites";
-import { hashKey, type CellExit, type ExitSlot } from "../dungeon";
+import { hashKey, reciprocalDoors, type CellExit, type ExitSlot } from "../dungeon";
 import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
 import { useGameLoop, CHAR } from "../hooks/useGameLoop";
 import { useDwellTracker } from "../hooks/useDwellTracker";
@@ -120,25 +120,36 @@ export default function Room2D() {
   };
 
   const trackHash = cell ? hashKey(cell.trackId) : 0;
+  // exit generation failed mid-flight (API error): derive the reciprocal
+  // doors on the fly so the player is never trapped; cell.exits stays
+  // unwritten, so re-entering the room retries full generation
+  const exits = useMemo(
+    () =>
+      cell?.exits ??
+      (error && currentKey
+        ? reciprocalDoors(currentKey, cells, tracks, track?.models).doors
+        : undefined),
+    [cell?.exits, error, currentKey, cells, tracks, track?.models],
+  );
   const layout = useMemo(
-    () => (currentKey && cell ? buildLayout(currentKey, trackHash, cell.exits) : null),
-    [currentKey, trackHash, cell?.exits],
+    () => (currentKey && cell ? buildLayout(currentKey, trackHash, exits) : null),
+    [currentKey, trackHash, exits, cell],
   );
 
   const suspects = useMemo(
     () =>
-      cell?.exits && currentKey && layout
-        ? suspectsFor(currentKey, cell.exits, layout.suspectSpots)
+      exits && currentKey && layout
+        ? suspectsFor(currentKey, exits, layout.suspectSpots)
         : [],
-    [currentKey, cell?.exits, layout],
+    [currentKey, exits, layout],
   );
   const revealedKeys = (currentKey && discovered[currentKey]) || [];
   const searchedIdxs = (currentKey && searched[currentKey]) || [];
 
   const interactables = useMemo<Interactable[]>(() => {
-    if (!cell?.exits || !currentKey) return [];
+    if (!exits || !currentKey) return [];
     const list: Interactable[] = [];
-    for (const ex of cell.exits) {
+    for (const ex of exits) {
       if (ex.kind === "portal") continue; // surfaced via suspects below
       list.push({
         id: `exit:${ex.toKey}`,
@@ -169,7 +180,7 @@ export default function Room2D() {
       }
     }
     return list;
-  }, [cell?.exits, currentKey, suspects, revealedKeys, searchedIdxs]);
+  }, [exits, currentKey, suspects, revealedKeys, searchedIdxs]);
 
   const interactablesRef = useRef(interactables);
   interactablesRef.current = interactables;
@@ -225,7 +236,7 @@ export default function Room2D() {
   const pulseSec = track.models?.bpm ? (60 / track.models.bpm) * 4 : 3;
   const warm = mood ? WARM_MOODS.has(mood) : false;
   const banner = (mood && BANNER_BY_MOOD[mood]) || SPR.bannerGreen;
-  const doorExits = cell.exits?.filter((ex) => ex.kind === "door") ?? [];
+  const doorExits = exits?.filter((ex) => ex.kind === "door") ?? [];
 
   return (
     <div

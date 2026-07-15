@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  DOOR_CEILING,
   DOOR_THRESHOLD,
   doorLabel,
   generateExits,
   hashKey,
   keyOf,
+  reciprocalDoors,
   valence,
   type RoomCell,
 } from "../dungeon";
@@ -173,8 +175,75 @@ describe("generateExits", () => {
     expect(DOOR_THRESHOLD).toBe(0.72);
   });
 
+  it("above-ceiling similars produce no exits (duplicate/remaster guard)", () => {
+    const g = generateExits(
+      "0,0,0", baseCells, basePlaced, { self: { id: "self", title: "Self Song" } },
+      [mk("dup", 0.99), mk("ok", 0.85)], M({}), {},
+    );
+    expect(g.exits.length).toBe(1);
+    expect(g.exits[0].toTitle).toBe("ok");
+    expect(DOOR_CEILING).toBe(0.95);
+  });
+
+  it("candidates titled like the current room are skipped (dup uploads)", () => {
+    const tracks = { self: { id: "self", title: "Neon Bloom" } };
+    const dup = { score: 0.85, track: { id: "d1", title: "neon bloom.mp3" } };
+    const g = generateExits(
+      "0,0,0", baseCells, basePlaced, tracks, [dup, mk("ok", 0.8)], M({}), {},
+    );
+    expect(g.exits.length).toBe(1);
+    expect(g.exits[0].toTitle).toBe("ok");
+  });
+
+  it("of two same-titled candidates only the higher-scored one opens a door", () => {
+    const t1 = { score: 0.9, track: { id: "x1", title: "Same Tune" } };
+    const t2 = { score: 0.8, track: { id: "x2", title: "Same Tune" } };
+    const g = generateExits(
+      "0,0,0", baseCells, basePlaced, {}, [t1, t2, mk("ok", 0.75)], M({}), {},
+    );
+    expect(g.exits.length).toBe(2);
+    expect(g.exits.filter((e) => e.toTitle === "Same Tune").length).toBe(1);
+    const kept = g.exits.find((e) => e.toTitle === "Same Tune")!;
+    expect(kept.score).toBe(0.9);
+  });
+
   it("keyOf produces 'x,y,z' string", () => {
     expect(keyOf([1, 2, 3])).toBe("1,2,3");
     expect(keyOf([0, 0, 0])).toBe("0,0,0");
+  });
+});
+
+// --- reciprocalDoors (Room2D escape hatch when exit generation fails) --------
+
+describe("reciprocalDoors", () => {
+  it("returns the door back when a neighbor has a door facing us", () => {
+    const cells: Record<string, RoomCell> = {
+      "0,0,0": {
+        pos: [0, 0, 0],
+        trackId: "self",
+        exits: [
+          { kind: "door", slot: "east", toKey: "1,0,0", toTitle: "x", score: 0.9, label: "" },
+        ],
+      },
+      "1,0,0": { pos: [1, 0, 0], trackId: "x" },
+    };
+    const { doors, freeSlots } = reciprocalDoors(
+      "1,0,0", cells, { self: { id: "self", title: "Self Song" } }, undefined,
+    );
+    expect(doors.length).toBe(1);
+    expect(doors[0].slot).toBe("west");
+    expect(doors[0].toKey).toBe("0,0,0");
+    expect(doors[0].toTitle).toBe("Self Song");
+    expect(freeSlots).not.toContain("west");
+    expect(freeSlots.length).toBe(5);
+  });
+
+  it("returns no doors and all 6 free slots for an isolated cell", () => {
+    const cells: Record<string, RoomCell> = {
+      "5,5,5": { pos: [5, 5, 5], trackId: "lone" },
+    };
+    const { doors, freeSlots } = reciprocalDoors("5,5,5", cells, {}, undefined);
+    expect(doors.length).toBe(0);
+    expect(freeSlots.length).toBe(6);
   });
 });
