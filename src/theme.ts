@@ -24,6 +24,25 @@ const PALETTES: Record<string, Palette> = {
 
 const FALLBACK: Palette = PALETTES.calm;
 
+const MOOD_EFFECTS: Record<string, string> = {
+  aggressive: "Enemies faster & shoot more often",
+  happy:      "Enemy count ×3",
+  sad:        "Player speed reduced",
+  calm:       "Sprint disabled",
+  chill:      "Attack speed halved, damage −60% · Stamina & HP regen ×3",
+  dark:       "Enemy HP ×2",
+  ethereal:   "50% chance to miss on attack",
+  uplifting:  "Player speed boosted",
+  energetic:  "Everything moves faster",
+  epic:       "Enemy damage increased",
+  romantic:   "Fewer enemies",
+  scary:      "Enemies are tough and hit hard",
+  sexy:       "Enemies slow but hit hard",
+};
+
+export const moodEffect = (mood: string | null): string | null =>
+  (mood && MOOD_EFFECTS[mood]) || null;
+
 export function topMood(models?: TrackModels | null): string | null {
   if (!models) return null;
   const sorted = Object.entries(models.moods).sort((a, b) => b[1] - a[1]);

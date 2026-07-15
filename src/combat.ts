@@ -4,6 +4,76 @@ import { hashKey } from "./dungeon";
 import { GRID, ROOM_PX } from "./roomLayout";
 import { TILE } from "./sprites";
 
+export interface MoodModifier {
+  enemySpeedMult: number;
+  shootCooldownMult: number;  // <1 = faster shooting
+  spawnCountMult: number;
+  spawnCapMult: number;
+  enemyHPMult: number;
+  enemyDmgMult: number;
+  playerSpeedMult: number;
+  playerAttackCdMult: number; // >1 = slower player attack rate
+  playerDmgMult: number;
+  playerHitChance: number;    // 0–1; <1 = chance to miss
+  sprintSpeedMult: number;    // multiplier on sprint speed bonus only
+  staminaRegenMult: number;   // >1 = faster stamina regen
+  hpRegenMult: number;        // >1 = faster HP regen
+  sprintDisabled: boolean;
+}
+
+export const MOOD_MODIFIER_NONE: MoodModifier = {
+  enemySpeedMult: 1, shootCooldownMult: 1,
+  spawnCountMult: 1, spawnCapMult: 1,
+  enemyHPMult: 1, enemyDmgMult: 1,
+  playerSpeedMult: 1, playerAttackCdMult: 1,
+  playerDmgMult: 1, playerHitChance: 1,
+  sprintSpeedMult: 1, staminaRegenMult: 1, hpRegenMult: 1,
+  sprintDisabled: false,
+};
+
+const AGGRESSIVE_ENEMY_SPEED    = 1.5;
+const AGGRESSIVE_SHOOT_COOLDOWN = 0.65;
+const HAPPY_SPAWN_MULT          = 3;
+const HAPPY_CAP_MULT            = 3;
+const SAD_PLAYER_SPEED          = 0.6;
+const DARK_ENEMY_HP             = 2.0;
+const ETHEREAL_HIT_CHANCE       = 0.5;
+const UPLIFTING_PLAYER_SPEED    = 1.4;
+const ENERGETIC_ENEMY_SPEED     = 1.3;
+const ENERGETIC_PLAYER_SPEED    = 1.2;
+const EPIC_ENEMY_DMG            = 1.6;
+const ROMANTIC_SPAWN_MULT       = 0.5;
+const ROMANTIC_CAP_MULT         = 0.5;
+const SEXY_ENEMY_SPEED          = 0.7;
+const SEXY_ENEMY_DMG            = 1.5;
+const SCARY_ENEMY_HP            = 1.5;
+const SCARY_ENEMY_DMG           = 1.3;
+const CHILL_ATTACK_CD_MULT      = 2.0;
+const CHILL_PLAYER_DMG          = 0.4;
+const CHILL_SPRINT_SPEED        = 0.5;
+const CHILL_STAMINA_REGEN       = 3.0;
+const CHILL_HP_REGEN            = 3.0;
+
+export function moodModifiersFor(mood: string | null): MoodModifier {
+  const n = MOOD_MODIFIER_NONE;
+  switch (mood) {
+    case "aggressive": return { ...n, enemySpeedMult: AGGRESSIVE_ENEMY_SPEED, shootCooldownMult: AGGRESSIVE_SHOOT_COOLDOWN };
+    case "happy":      return { ...n, spawnCountMult: HAPPY_SPAWN_MULT, spawnCapMult: HAPPY_CAP_MULT };
+    case "sad":        return { ...n, playerSpeedMult: SAD_PLAYER_SPEED };
+    case "calm":       return { ...n, sprintDisabled: true };
+    case "chill":      return { ...n, playerAttackCdMult: CHILL_ATTACK_CD_MULT, playerDmgMult: CHILL_PLAYER_DMG, sprintSpeedMult: CHILL_SPRINT_SPEED, staminaRegenMult: CHILL_STAMINA_REGEN, hpRegenMult: CHILL_HP_REGEN };
+    case "dark":       return { ...n, enemyHPMult: DARK_ENEMY_HP };
+    case "ethereal":   return { ...n, playerHitChance: ETHEREAL_HIT_CHANCE };
+    case "uplifting":  return { ...n, playerSpeedMult: UPLIFTING_PLAYER_SPEED };
+    case "energetic":  return { ...n, enemySpeedMult: ENERGETIC_ENEMY_SPEED, playerSpeedMult: ENERGETIC_PLAYER_SPEED };
+    case "epic":       return { ...n, enemyDmgMult: EPIC_ENEMY_DMG };
+    case "romantic":   return { ...n, spawnCountMult: ROMANTIC_SPAWN_MULT, spawnCapMult: ROMANTIC_CAP_MULT };
+    case "scary":      return { ...n, enemyHPMult: SCARY_ENEMY_HP, enemyDmgMult: SCARY_ENEMY_DMG };
+    case "sexy":       return { ...n, enemySpeedMult: SEXY_ENEMY_SPEED, enemyDmgMult: SEXY_ENEMY_DMG };
+    default:           return n;
+  }
+}
+
 export type RoomType = "combat" | "treasure" | "rest";
 export type EnemyKind = "charger" | "shooter";
 
@@ -62,9 +132,9 @@ const EDGE_INSET_HI = 5 * TILE; // max distance from wall
 export const ENEMY_RADIUS = 22;
 export const PLAYER_RADIUS = 14; // slightly forgiving vs CHAR/2 = 17
 
-export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number, wave = 0, difficulty = 1): Enemy[] {
+export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number, wave = 0, difficulty = 1, modifier: MoodModifier = MOOD_MODIFIER_NONE): Enemy[] {
   const h = hashKey(cellKey);
-  const count = 6 + (h % 3); // 6–8
+  const count = Math.max(1, Math.round((6 + (h % 3)) * modifier.spawnCountMult)); // base 6–8
 
   // Balanced kinds: floor(count/2) shooters + rest chargers, shuffled deterministically.
   const kinds: EnemyKind[] = Array.from({ length: count }, (_, i) =>
@@ -98,10 +168,10 @@ export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number
     else { x = SPAWN_HI - inset; y = along; }
     const kind = kinds[i];
     const sqrtD = Math.sqrt(difficulty);
-    const hp = Math.round((kind === "charger" ? 20 : 15) * difficulty);
-    const dmg = Math.round((kind === "charger" ? 28 : 15) * difficulty);
-    const spd = Math.round(CHARGE_SPEED * sqrtD);
-    const baseCooldown = kind === "charger" ? CHARGE_PAUSE : SHOOTER_COOLDOWN / sqrtD;
+    const hp = Math.round((kind === "charger" ? 20 : 15) * difficulty * modifier.enemyHPMult);
+    const dmg = Math.round((kind === "charger" ? 28 : 15) * difficulty * modifier.enemyDmgMult);
+    const spd = Math.round(CHARGE_SPEED * sqrtD * modifier.enemySpeedMult);
+    const baseCooldown = kind === "charger" ? CHARGE_PAUSE : (SHOOTER_COOLDOWN / sqrtD) * modifier.shootCooldownMult;
     const initCooldown = kind === "charger" ? 0.5 + (seed % 10) * 0.15 : baseCooldown;
     enemies.push({ id: `${cellKey}:${i}:${wave}`, kind, x, y, hp, maxHp: hp, damage: dmg, speed: spd, baseCooldown, shootCooldown: initCooldown });
   }

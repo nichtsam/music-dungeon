@@ -8,10 +8,13 @@ import {
   moveEnemies, tickShooters, moveProjectiles, isOutOfBounds,
   checkCollisions, spawnEnemies, roomTypeFor,
   buildLightningChain, difficultyFor,
+  moodModifiersFor,
 } from "../combat";
+import { topMood } from "../theme";
 
 export const CHAR = 34; // character collision box px
 export const SPEED = 250; // px/s
+const SPAWN_CAP_BASE = 15;
 const INTERACT_PAD = 26;
 const STAMINA_REGEN_SEC = 8; // seconds from empty to full
 const STAMINA_REENGAGE = 0.15; // fraction required to sprint again after empty
@@ -102,6 +105,9 @@ export function useGameLoop<T extends Focusable>({
       const dt = Math.min((t - last) / 1000, 0.05);
       last = t;
       const state = useDungeon.getState();
+      const _moodCell = state.currentKey ? state.cells[state.currentKey] : null;
+      const _moodTrack = _moodCell ? state.tracks[_moodCell.trackId] : null;
+      const modifier = moodModifiersFor(topMood(_moodTrack?.models ?? null));
       if (state.view !== "dungeon" || state.loading) {
         held.clear();
         raf = requestAnimationFrame(tick);
@@ -144,12 +150,12 @@ export function useGameLoop<T extends Focusable>({
       const maxStam = sprintMaxSeconds(stats.stamina);
       if (stam < 0) stam = maxStam;
       if (winded && stam >= maxStam * STAMINA_REENGAGE) winded = false;
-      const sprinting = moving && held.has("sprint") && !winded && stam > 0;
+      const sprinting = moving && held.has("sprint") && !winded && stam > 0 && !modifier.sprintDisabled;
       if (sprinting) {
         stam = Math.max(0, stam - dt);
         if (stam === 0) winded = true;
       } else {
-        stam = Math.min(maxStam, stam + dt * (maxStam / STAMINA_REGEN_SEC));
+        stam = Math.min(maxStam, stam + dt * (maxStam / STAMINA_REGEN_SEC) * modifier.staminaRegenMult);
       }
       const bar = staminaRef?.current;
       if (bar) {
@@ -161,7 +167,7 @@ export function useGameLoop<T extends Focusable>({
       }
 
       if (moving) {
-        const spd = sprinting ? SPEED * sprintMultiplier(stats.agility) : SPEED;
+        const spd = (sprinting ? SPEED * (1 + (sprintMultiplier(stats.agility) - 1) * modifier.sprintSpeedMult) : SPEED) * modifier.playerSpeedMult;
         if (held.has("up")) p.y -= spd * dt;
         if (held.has("down")) p.y += spd * dt;
         if (held.has("left")) p.x -= spd * dt;
@@ -188,11 +194,13 @@ export function useGameLoop<T extends Focusable>({
         autoAttackCdRef.current = Math.max(0, autoAttackCdRef.current - dt);
         let lightningHits: Array<{ id: string; damage: number }> = [];
         if (autoAttackCdRef.current === 0 && moved.length > 0) {
-          autoAttackCdRef.current = stats.attackRate;
-          const pcx = p.x + 17, pcy = p.y + 17;
-          const { hits, arcs } = buildLightningChain(moved, pcx, pcy, stats.attackDmg);
-          lightningHits = hits;
-          lightningRef.current = [...lightningRef.current, ...arcs];
+          autoAttackCdRef.current = stats.attackRate * modifier.playerAttackCdMult;
+          if (Math.random() < modifier.playerHitChance) {
+            const pcx = p.x + 17, pcy = p.y + 17;
+            const { hits, arcs } = buildLightningChain(moved, pcx, pcy, stats.attackDmg * modifier.playerDmgMult);
+            lightningHits = hits;
+            lightningRef.current = [...lightningRef.current, ...arcs];
+          }
         }
 
         // tick lightning arc TTL
@@ -229,7 +237,7 @@ export function useGameLoop<T extends Focusable>({
         if (surviving.length === 0 && enemies.length > 0) spawnTimerRef.current = 0;
 
         // player HP — damage then regen (capped at maxHP)
-        const regen = hpRegenRate(stats.stamina) * dt;
+        const regen = hpRegenRate(stats.stamina) * dt * modifier.hpRegenMult;
         playerHPRef.current = Math.min(
           stats.maxHP,
           Math.max(0, playerHPRef.current - playerDmg + regen),
@@ -252,9 +260,9 @@ export function useGameLoop<T extends Focusable>({
         spawnTimerRef.current -= dt;
         if (spawnTimerRef.current <= 0) {
           spawnTimerRef.current = 5;
-          if (enemiesRef.current.length < 15) {
+          if (enemiesRef.current.length < Math.round(SPAWN_CAP_BASE * modifier.spawnCapMult)) {
             const wave = ++waveRef.current;
-            enemiesRef.current = [...enemiesRef.current, ...spawnEnemies(state.currentKey, p.x, p.y, wave, difficultyFor(dungeonMsRef.current))];
+            enemiesRef.current = [...enemiesRef.current, ...spawnEnemies(state.currentKey, p.x, p.y, wave, difficultyFor(dungeonMsRef.current), modifier)];
           }
         }
       }

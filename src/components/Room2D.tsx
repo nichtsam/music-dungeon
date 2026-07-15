@@ -4,7 +4,7 @@
 // Secret passages hide behind cracked-floor suspect spots — some are decoys.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
-import { paletteFor, topMood } from "../theme";
+import { paletteFor, topMood, moodEffect } from "../theme";
 import TrackHUD from "./TrackHUD";
 import CombatOverlay from "./CombatOverlay";
 import { SPR, TILE, spriteStyle } from "../sprites";
@@ -280,6 +280,7 @@ export default function Room2D() {
   const roomType = currentKey ? roomTypeFor(currentKey, runSeed) : "combat";
   const locked = lockSecondsLeft > 0;
   const mood = topMood(track.models);
+  const effect = moodEffect(mood);
   const pulseSec = track.models?.bpm ? (60 / track.models.bpm) * 4 : 3;
   const warm = mood ? WARM_MOODS.has(mood) : false;
   const banner = (mood && BANNER_BY_MOOD[mood]) || SPR.bannerGreen;
@@ -547,10 +548,15 @@ export default function Room2D() {
           🎵 {track.title}
         </div>
         <div style={{ fontSize: 15, opacity: 0.75 }}>
-          {mood && `${mood} · `}
-          {track.models?.genre && `${track.models.genre} · `}
-          {track.models?.bpm && `${track.models.bpm} BPM`}
+          {[mood, track.models?.genre, track.models?.bpm && `${track.models.bpm} BPM`].filter(Boolean).join(" · ")}
         </div>
+        {effect && (
+          <div style={{ fontSize: 13, color: pal.glow, marginTop: 5, lineHeight: 1.7 }}>
+            {effect.split(" · ").map((part, i) => (
+              <div key={i}>{i === 0 ? "✦" : "·"} {part}</div>
+            ))}
+          </div>
+        )}
         {error && <div style={{ fontSize: 14, color: "#ff8080" }}>{error}</div>}
       </div>
 

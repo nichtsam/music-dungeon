@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDungeon } from "../store";
 import { completenessOf, DWELL_TARGET } from "../stats";
-import { paletteFor, topMood } from "../theme";
+import { paletteFor, topMood, moodEffect } from "../theme";
 import TrackDetail from "./TrackDetail";
 
 export default function TrackHUD() {
@@ -22,6 +22,7 @@ export default function TrackHUD() {
 
   const { glow } = paletteFor(track.models);
   const mood = topMood(track.models);
+  const effect = moodEffect(mood);
   const duration = track.id ? durations[track.id] : undefined;
   const attunement = completenessOf(currentKey ? dwell[currentKey] : undefined, duration ?? DWELL_TARGET);
 
@@ -55,6 +56,13 @@ export default function TrackHUD() {
           <div style={{ opacity: 0.7, fontSize: 13 }}>
             {[mood, track.models?.genre, track.models?.bpm && `${track.models.bpm} BPM`].filter(Boolean).join(" · ")}
           </div>
+          {effect && (
+            <div style={{ color: glow, opacity: 0.8, fontSize: 12, marginTop: 3, lineHeight: 1.7 }}>
+              {effect.split(" · ").map((part, i) => (
+                <div key={i}>{i === 0 ? "✦" : "·"} {part}</div>
+              ))}
+            </div>
+          )}
           <div style={{ opacity: 0.4, fontSize: 12, marginTop: 3 }}>
             {Math.round(attunement * 100)}% attuned · I for details
           </div>
