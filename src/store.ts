@@ -12,6 +12,8 @@ import {
   type RoomCell,
   type TrackInfo,
 } from "./dungeon";
+import { initialDifficultyFromStats, DIFFICULTY_SCALE_MS } from "./combat";
+import { derivePlayerStats } from "./stats";
 
 export type View = "entrance" | "dungeon" | "map" | "menu";
 export type MapMode = "floor" | "structure" | "attunements" | "stats";
@@ -170,7 +172,10 @@ export const useDungeon = create<DungeonState>((set, get) => ({
     for (const [trackId, cellKey] of Object.entries(s.placed)) {
       snapshot[trackId] = Math.max(s.dwell[cellKey] ?? 0, s.totalDwell[trackId] ?? 0);
     }
-    set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View, savedHP: null, savedStamina: null, dungeonMs: 0, lockUntil: {} });
+    const stats = derivePlayerStats({}, {}, {}, {}, snapshot, s.treeNodes);
+    const initDifficulty = initialDifficultyFromStats(stats);
+    const initDungeonMs = Math.max(0, (initDifficulty - 1) * DIFFICULTY_SCALE_MS);
+    set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View, savedHP: null, savedStamina: null, dungeonMs: initDungeonMs, lockUntil: {} });
   },
 
   reset: () => {
