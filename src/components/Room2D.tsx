@@ -484,7 +484,7 @@ export default function Room2D() {
         }}
       >
         <div className="pulse" style={{ fontSize: 32, color: pal.accent, animationDuration: "1.2s" }}>✦</div>
-        <div style={{ fontSize: 16, opacity: 0.6, letterSpacing: 2 }}>mapping exits…</div>
+        <div style={{ fontSize: 16, opacity: 0.6, letterSpacing: 2 }}>finding the path…</div>
       </div>
 
       {/* room type badge — top-center, viewport space */}

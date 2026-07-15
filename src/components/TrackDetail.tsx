@@ -63,7 +63,7 @@ export default function TrackDetail({ track, duration, attunement }: Props) {
         </div>
       )}
       {!moods && (
-        <div style={{ fontSize: 13, opacity: 0.4 }}>Loading analysis…</div>
+        <div style={{ fontSize: 13, opacity: 0.4 }}>sensing the aura…</div>
       )}
     </div>
   );

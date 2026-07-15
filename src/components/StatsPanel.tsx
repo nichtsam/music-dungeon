@@ -74,8 +74,8 @@ export default function StatsPanel() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           {card(CLR.hp,      "❤️", "HP",      s.maxHP.toFixed(1),    "all listening (base 50)")}
           {card(CLR.attack,  "⚔️", "ATTACK",  s.attackDmg.toFixed(1),"all listening (base 10)")}
-          {card(CLR.agility, "⚡", "AGILITY", s.agility.toFixed(1),  "from fast tracks (high BPM)")}
-          {card(CLR.stamina, "🫀", "STAMINA", s.stamina.toFixed(1),  "from slow tracks (low BPM)")}
+          {card(CLR.agility, "⚡", "AGILITY", s.agility.toFixed(1),  "from swift, high-tempo music")}
+          {card(CLR.stamina, "🫀", "STAMINA", s.stamina.toFixed(1),  "from slow, low-tempo music")}
         </div>
 
         {/* Derived: Sprint Speed, Attack Rate, HP Regen — show formula */}
@@ -86,8 +86,8 @@ export default function StatsPanel() {
         </div>
 
         {/* Track contributions */}
-        <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 8, letterSpacing: 1 }}>TRACK CONTRIBUTIONS</div>
-        {trackEntries.length === 0 && <div style={{ fontSize: 14, opacity: 0.5 }}>none yet — stay in a room to earn stat points</div>}
+        <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 8, letterSpacing: 1 }}>SONGS HEARD</div>
+        {trackEntries.length === 0 && <div style={{ fontSize: 14, opacity: 0.5 }}>explore and linger — the music shapes you</div>}
         {trackEntries.map((t) => (
           <div key={t.id} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "6px 10px", borderLeft: `3px solid ${t.glow}`, background: "#0c0a1480", marginBottom: 4, fontSize: 13 }}>
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎵 {t.title}</span>

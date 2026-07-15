@@ -188,7 +188,7 @@ export const useDungeon = create<DungeonState>((set, get) => ({
     try {
       const results = await promptSearch(query, 1);
       const top = results[0];
-      if (!top) throw new Error("No tracks matched that description.");
+      if (!top) throw new Error("Nothing stirred. Try a different feeling.");
       const key = keyOf([0, 0, 0]);
       set({
         cells: { [key]: { pos: [0, 0, 0], trackId: top.track.id } },
