@@ -82,7 +82,7 @@ const BANNER_BY_MOOD: Record<string, (typeof SPR)[keyof typeof SPR]> = {
 export default function Room2D() {
   const {
     cells, tracks, currentKey, visitedKeys, discovered, searched,
-    loading, error, reset, discover, markSearched,
+    loading, error, discover, markSearched,
     dwell, placed, durations, totalDwell, runSeed, lockUntil,
     setLockUntil, setBonusRoom,
   } = useDungeon();
@@ -559,12 +559,6 @@ export default function Room2D() {
         <br />
         WASD / arrows move · Shift sprint · SPACE interact · Tab map
       </div>
-      <button
-        onClick={reset}
-        style={{ position: "absolute", top: 16, right: 16, padding: "6px 12px", fontSize: 14, borderRadius: 4, border: "1px solid #5a4a8a", background: "#171226aa", color: "inherit", opacity: 0.8 }}
-      >
-        ↩ new dungeon
-      </button>
       <TrackHUD />
     </div>
   );

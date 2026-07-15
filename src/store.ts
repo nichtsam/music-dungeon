@@ -66,10 +66,16 @@ function hydrate(): Partial<DungeonState> {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const s = JSON.parse(raw);
-    if (!s.currentKey || !s.cells?.[s.currentKey]) return {};
+    // Always restore meta-progression so records survive entrance/refresh.
+    const meta = {
+      totalDwell: s.totalDwell ?? {},
+      treeNodes: s.treeNodes ?? {},
+      treeEdges: s.treeEdges ?? [],
+    };
+    if (!s.currentKey || !s.cells?.[s.currentKey]) return meta;
     // If the current room never finished loading exits (mid-load refresh),
     // drop the dungeon — the player would be stuck with no doors.
-    if (!s.cells[s.currentKey].exits) return {};
+    if (!s.cells[s.currentKey].exits) return meta;
     for (const t of Object.values(s.tracks ?? {}) as TrackInfo[])
       if (t.models) primeModelsCache(t.id, t.models);
     return { ...s, view: "menu" as View };
@@ -164,7 +170,6 @@ export const useDungeon = create<DungeonState>((set, get) => ({
     for (const [trackId, cellKey] of Object.entries(s.placed)) {
       snapshot[trackId] = Math.max(s.dwell[cellKey] ?? 0, s.totalDwell[trackId] ?? 0);
     }
-    localStorage.removeItem(STORAGE_KEY);
     set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View, savedHP: null, savedStamina: null, dungeonMs: 0, lockUntil: {} });
   },
 
