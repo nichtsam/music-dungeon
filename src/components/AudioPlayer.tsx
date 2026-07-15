@@ -9,6 +9,7 @@ export default function AudioPlayer() {
   const track = useDungeon((s) =>
     s.currentKey ? s.tracks[s.cells[s.currentKey]?.trackId ?? ""] : undefined,
   );
+  const setDuration = useDungeon((s) => s.setDuration);
   const ref = useRef<HTMLAudioElement>(null);
   const src = track ? audioUrl(track) : null;
 
@@ -19,6 +20,14 @@ export default function AudioPlayer() {
     if (view === "map") el.pause();
     else el.play().catch(() => {}); // autoplay may be blocked until first gesture
   }, [view, src]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !track) return;
+    const onMeta = () => setDuration(track.id, el.duration);
+    el.addEventListener("loadedmetadata", onMeta);
+    return () => el.removeEventListener("loadedmetadata", onMeta);
+  }, [track?.id, setDuration]);
 
   if (!src) return null; // mock tracks have no audio
   return <audio ref={ref} src={src} autoPlay loop />;

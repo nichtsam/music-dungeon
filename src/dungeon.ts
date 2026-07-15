@@ -245,7 +245,7 @@ export function doorLabel(
     if (Math.abs(d) >= BPM_THRESHOLD && (!best || Math.abs(d) / 40 > best.mag))
       best = { word: d > 0 ? "faster" : "slower", mag: Math.abs(d) / 40 };
   }
-  return best ? best.word : fallback;
+  return best ? `${best.word} · ${Math.round(score * 100)}%` : fallback;
 }
 
 // brightness valence: stairs lead up toward light, trapdoors down into gloom
@@ -264,7 +264,7 @@ if (import.meta.env.DEV) {
     moods, bpm, genre: null,
   });
   console.assert(
-    doorLabel(M({ dark: 0.2 }), M({ dark: 0.6 }), 0.8) === "darker" &&
+    doorLabel(M({ dark: 0.2 }), M({ dark: 0.6 }), 0.8) === "darker · 80%" &&
       doorLabel(M({}), M({}), 0.8) === "80% similar",
     "doorLabel smoke check failed",
   );

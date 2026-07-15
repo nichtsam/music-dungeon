@@ -5,7 +5,7 @@
 // Tracks referenced by exits but not yet visited appear as locked previews —
 // the "next unlockable skill" of the tree. Ground rings fill with dwell-time
 // completeness (attunement).
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import {
   completenessOf,
@@ -25,6 +25,7 @@ const FILL_DIR = ["top", "bottom", "to left", "to right", "to bottom", "to top"]
 
 interface NestNode {
   key: string;
+  trackId: string;
   pos: V3;
   title: string;
   glow: string;
@@ -36,9 +37,10 @@ interface NestNode {
   locked: boolean; // referenced by a similarity edge but not yet visited
 }
 
-export default function Attunements3D() {
+export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId: string) => void }) {
   const { cells, tracks, currentKey, visitedKeys, dwell, placed } = useDungeon();
   const [hover, setHover] = useState<NestNode | null>(null);
+  const clickOrigin = useRef<{ x: number; y: number } | null>(null);
   const { overlayRef, sceneRef, pointerHandlers, zoom } = useOrbitCamera();
 
   const { nodes, tunnels, moodCounts, avgC } = useMemo(() => {
@@ -79,6 +81,7 @@ export default function Attunements3D() {
       const locked = i >= visitedKeys.length;
       return {
         key,
+        trackId: cell.trackId,
         pos: positions[i],
         title: track?.title ?? cell.trackId,
         glow: paletteFor(track?.models).glow,
@@ -109,6 +112,18 @@ export default function Attunements3D() {
     <div
       ref={overlayRef}
       {...pointerHandlers}
+      onPointerDown={(e) => {
+        pointerHandlers.onPointerDown(e);
+        clickOrigin.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        pointerHandlers.onPointerUp();
+        const o = clickOrigin.current;
+        if (o && Math.hypot(e.clientX - o.x, e.clientY - o.y) < 5 && hover && onNodeClick) {
+          onNodeClick(hover.trackId);
+        }
+        clickOrigin.current = null;
+      }}
       style={{
         position: "absolute",
         inset: 0,

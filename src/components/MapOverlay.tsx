@@ -2,12 +2,13 @@
 // 1 FLOOR (2D plan) · 2 STRUCTURE (3D lattice, game-true directions) ·
 // 3 ATTUNEMENTS (similarity graph / attunement tree) · 4 STATS (player stats).
 // Tab still closes (handled in App).
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useDungeon, type MapMode } from "../store";
 import FloorMap from "./FloorMap";
 import Structure3D from "./Structure3D";
 import Attunements3D from "./Attunements3D";
 import StatsPanel from "./StatsPanel";
+import TrackDetailPanel from "./TrackDetailPanel";
 
 const MODES: { mode: MapMode; label: string }[] = [
   { mode: "floor", label: "1 FLOOR" },
@@ -20,6 +21,9 @@ export default function MapOverlay() {
   const mapMode = useDungeon((s) => s.mapMode);
   const setMapMode = useDungeon((s) => s.setMapMode);
   const setView = useDungeon((s) => s.setView);
+  const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+
+  useEffect(() => { setSelectedTrackId(null); }, [mapMode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -35,10 +39,13 @@ export default function MapOverlay() {
 
   return (
     <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "#05030c" }}>
-      {mapMode === "floor" && <FloorMap />}
-      {mapMode === "structure" && <Structure3D />}
-      {mapMode === "attunements" && <Attunements3D />}
+      {mapMode === "floor" && <FloorMap onNodeClick={setSelectedTrackId} />}
+      {mapMode === "structure" && <Structure3D onNodeClick={setSelectedTrackId} />}
+      {mapMode === "attunements" && <Attunements3D onNodeClick={setSelectedTrackId} />}
       {mapMode === "stats" && <StatsPanel />}
+      {selectedTrackId && (
+        <TrackDetailPanel trackId={selectedTrackId} onClose={() => setSelectedTrackId(null)} />
+      )}
 
       {/* tab bar */}
       <div

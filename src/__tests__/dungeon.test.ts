@@ -67,13 +67,13 @@ describe("doorLabel", () => {
     expect(doorLabel(M({}), undefined, 0.75)).toBe("75% similar");
   });
   it("picks the dominant mood delta", () => {
-    expect(doorLabel(M({ dark: 0.2 }), M({ dark: 0.6 }), 0.8)).toBe("darker");
-    expect(doorLabel(M({ dark: 0.6 }), M({ dark: 0.2 }), 0.8)).toBe("brighter");
+    expect(doorLabel(M({ dark: 0.2 }), M({ dark: 0.6 }), 0.8)).toBe("darker · 80%");
+    expect(doorLabel(M({ dark: 0.6 }), M({ dark: 0.2 }), 0.8)).toBe("brighter · 80%");
   });
   it("picks BPM over a weak mood delta", () => {
     // BPM diff 40 = full swing; mood diff 0.05 = below threshold
     const label = doorLabel(M({ calm: 0.5 }, 80), M({ calm: 0.55 }, 120), 0.8);
-    expect(label).toBe("faster");
+    expect(label).toBe("faster · 80%");
   });
   it("picks largest delta when multiple moods qualify", () => {
     // energetic: +0.15 (exceeds 0.12 threshold), dark: +0.3 (larger)
@@ -82,7 +82,7 @@ describe("doorLabel", () => {
       M({ energetic: 0.35, dark: 0.4 }),
       0.8,
     );
-    expect(label).toBe("darker");
+    expect(label).toBe("darker · 80%");
   });
   it("falls back when delta below threshold", () => {
     expect(doorLabel(M({ dark: 0.5 }), M({ dark: 0.55 }), 0.9)).toBe("90% similar");

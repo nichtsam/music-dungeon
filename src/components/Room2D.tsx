@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
+import TrackHUD from "./TrackHUD";
 import { SPR, TILE, spriteStyle } from "../sprites";
 import { hashKey, reciprocalDoors, type CellExit, type ExitSlot } from "../dungeon";
 import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
@@ -469,6 +470,7 @@ export default function Room2D() {
       >
         ↩ new dungeon
       </button>
+      <TrackHUD />
     </div>
   );
 }

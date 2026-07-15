@@ -25,6 +25,7 @@ interface DungeonState {
   discovered: Record<string, string[]>; // cellKey -> revealed portal toKeys
   searched: Record<string, number[]>; // cellKey -> searched suspect-spot indices
   dwell: Record<string, number>; // cellKey -> seconds spent in the room
+  durations: Record<string, number>; // trackId -> audio duration in seconds (runtime only)
   view: View;
   mapMode: MapMode;
   loading: boolean;
@@ -32,6 +33,7 @@ interface DungeonState {
   setView: (v: View) => void;
   setMapMode: (m: MapMode) => void;
   addDwell: (cellKey: string, seconds: number) => void;
+  setDuration: (trackId: string, seconds: number) => void;
   enterDungeon: (query: string) => Promise<void>;
   enterRoom: (key: string) => Promise<void>;
   discover: (cellKey: string, toKey: string) => void;
@@ -65,6 +67,7 @@ const EMPTY = {
   discovered: {},
   searched: {},
   dwell: {},
+  durations: {},
   view: "entrance" as View,
   mapMode: "floor" as MapMode,
   loading: false,
@@ -83,6 +86,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
     set((s) => ({
       dwell: { ...s.dwell, [cellKey]: (s.dwell[cellKey] ?? 0) + seconds },
     })),
+
+  setDuration: (trackId, seconds) =>
+    set((s) => ({ durations: { ...s.durations, [trackId]: seconds } })),
 
   discover: (cellKey, toKey) =>
     set((s) => ({

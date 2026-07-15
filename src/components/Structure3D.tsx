@@ -2,7 +2,7 @@
 // Directions match the game exactly: a room entered through the east door sits
 // to the east. Each occupied floor gets a translucent ground slab; same-floor
 // rooms sit on the same ground. Compass letters lie on the bottom slab.
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import { CUBE_FACES, edgeKey, lineStyle, shade, useOrbitCamera, type V3 } from "./map3d";
@@ -13,6 +13,7 @@ const CELL = 40;
 
 interface StructNode {
   key: string;
+  trackId: string;
   pos: V3; // scene coords; z = floor plane, cube sits ON it
   title: string;
   glow: string;
@@ -23,9 +24,10 @@ interface StructNode {
   isCurrent: boolean;
 }
 
-export default function Structure3D() {
+export default function Structure3D({ onNodeClick }: { onNodeClick?: (trackId: string) => void }) {
   const { cells, tracks, currentKey, visitedKeys, discovered } = useDungeon();
   const [hover, setHover] = useState<StructNode | null>(null);
+  const clickOrigin = useRef<{ x: number; y: number } | null>(null);
   const { overlayRef, sceneRef, pointerHandlers } = useOrbitCamera({
     yaw: 25,
     pitch: 60,
@@ -54,6 +56,7 @@ export default function Structure3D() {
       const track = tracks[cell.trackId];
       return {
         key,
+        trackId: cell.trackId,
         pos: toScene(cell.pos),
         title: track?.title ?? cell.trackId,
         glow: paletteFor(track?.models).glow,
@@ -105,6 +108,18 @@ export default function Structure3D() {
     <div
       ref={overlayRef}
       {...pointerHandlers}
+      onPointerDown={(e) => {
+        pointerHandlers.onPointerDown(e);
+        clickOrigin.current = { x: e.clientX, y: e.clientY };
+      }}
+      onPointerUp={(e) => {
+        pointerHandlers.onPointerUp();
+        const o = clickOrigin.current;
+        if (o && Math.hypot(e.clientX - o.x, e.clientY - o.y) < 5 && hover && onNodeClick) {
+          onNodeClick(hover.trackId);
+        }
+        clickOrigin.current = null;
+      }}
       style={{
         position: "absolute",
         inset: 0,

@@ -3,7 +3,7 @@
 // Drag pans, wheel zooms, double-click recenters.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
-import { paletteFor } from "../theme";
+import { paletteFor, topMood } from "../theme";
 
 const CELL = 48;
 const STEP = 200;
@@ -14,6 +14,7 @@ function usePanZoom() {
   const contentRef = useRef<HTMLDivElement>(null);
   const view = useRef({ x: 0, y: 0, zoom: 1 });
   const drag = useRef<{ x: number; y: number } | null>(null);
+  const moved = useRef(false);
 
   const apply = () => {
     const v = view.current;
@@ -41,13 +42,17 @@ function usePanZoom() {
       // pointer capture would steal the floor buttons' clicks
       if ((e.target as HTMLElement).closest("button")) return;
       drag.current = { x: e.clientX, y: e.clientY };
+      moved.current = false;
       e.currentTarget.setPointerCapture(e.pointerId);
     },
     onPointerMove: (e: React.PointerEvent) => {
       const d = drag.current;
       if (!d) return;
-      view.current.x += e.clientX - d.x;
-      view.current.y += e.clientY - d.y;
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
+      view.current.x += dx;
+      view.current.y += dy;
       drag.current = { x: e.clientX, y: e.clientY };
       apply();
     },
@@ -57,14 +62,15 @@ function usePanZoom() {
       apply();
     },
   };
-  return { overlayRef, contentRef, handlers };
+  return { overlayRef, contentRef, handlers, moved };
 }
 
-export default function FloorMap() {
+export default function FloorMap({ onNodeClick }: { onNodeClick?: (trackId: string) => void }) {
   const { cells, tracks, currentKey, visitedKeys, discovered } = useDungeon();
   const currentFloor = currentKey ? cells[currentKey].pos[2] : 0;
   const [floor, setFloor] = useState(currentFloor);
-  const { overlayRef, contentRef, handlers } = usePanZoom();
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const { overlayRef, contentRef, handlers, moved } = usePanZoom();
 
   const floors = useMemo(
     () =>
@@ -93,10 +99,17 @@ export default function FloorMap() {
   const w = (Math.max(...xs) - minX + 1) * STEP;
   const h = (Math.max(...ys) - minY + 1) * STEP;
 
+  const hoveredTrack = hoveredKey ? tracks[cells[hoveredKey]?.trackId] : null;
+
   return (
     <div
       ref={overlayRef}
       {...handlers}
+      onPointerUp={() => {
+        handlers.onPointerUp();
+        const cell = hoveredKey ? cells[hoveredKey] : null;
+        if (!moved.current && cell && onNodeClick) onNodeClick(cell.trackId);
+      }}
       style={{
         position: "absolute",
         inset: 0,
@@ -141,6 +154,8 @@ export default function FloorMap() {
                 ))}
               <div
                 className={k === currentKey ? "minimap-current" : undefined}
+                onPointerEnter={() => setHoveredKey(k)}
+                onPointerLeave={() => setHoveredKey((h) => (h === k ? null : h))}
                 style={{
                   position: "absolute",
                   left,
@@ -150,9 +165,10 @@ export default function FloorMap() {
                   background: pal.glow,
                   opacity: k === currentKey ? 1 : 0.6,
                   borderRadius: 6,
-                  border: k === currentKey ? "3px solid #fff" : "3px solid transparent",
+                  border: k === currentKey ? "3px solid #fff" : k === hoveredKey ? `3px solid ${pal.accent}` : "3px solid transparent",
                   boxSizing: "border-box",
                   boxShadow: `0 0 14px ${pal.glow}80`,
+                  cursor: onNodeClick ? "pointer" : "default",
                 }}
               >
                 {hasSecret && (
@@ -183,6 +199,26 @@ export default function FloorMap() {
           );
         })}
       </div>
+
+      {/* hover tooltip */}
+      {hoveredTrack && (
+        <div
+          style={{
+            position: "absolute", bottom: 16, left: 16,
+            background: "#0c0a14ee", border: `2px solid ${paletteFor(hoveredTrack.models).glow}90`,
+            borderRadius: 4, padding: "8px 14px", fontSize: 15,
+            pointerEvents: "none", boxShadow: `0 0 18px ${paletteFor(hoveredTrack.models).glow}40`,
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700, color: paletteFor(hoveredTrack.models).glow }}>
+            🎵 {hoveredTrack.title}
+          </div>
+          <div style={{ opacity: 0.75, fontSize: 13 }}>
+            {[topMood(hoveredTrack.models), hoveredTrack.models?.genre, hoveredTrack.models?.bpm && `${hoveredTrack.models.bpm} BPM`].filter(Boolean).join(" · ")}
+            {onNodeClick && <span style={{ opacity: 0.5 }}> · click for details</span>}
+          </div>
+        </div>
+      )}
 
       {/* floor switcher */}
       <div
