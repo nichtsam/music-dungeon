@@ -56,19 +56,38 @@ export const PLAYER_RADIUS = 14; // slightly forgiving vs CHAR/2 = 17
 export function spawnEnemies(cellKey: string, _playerX: number, _playerY: number, wave = 0): Enemy[] {
   const h = hashKey(cellKey);
   const count = 6 + (h % 3); // 6–8
+
+  // Balanced kinds: floor(count/2) shooters + rest chargers, shuffled deterministically.
+  const kinds: EnemyKind[] = Array.from({ length: count }, (_, i) =>
+    i < Math.floor(count / 2) ? "shooter" : "charger",
+  );
+  for (let i = count - 1; i > 0; i--) {
+    const j = hashKey(`${cellKey}:shuf:${i}:${wave}`) % (i + 1);
+    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+  }
+
+  // How many enemies land on each side (round-robin), for even spacing.
+  const perSide = [0, 0, 0, 0];
+  for (let i = 0; i < count; i++) perSide[i % 4]++;
+  const sideIdx = [0, 0, 0, 0];
+
+  const range = SPAWN_HI - SPAWN_LO;
   const enemies: Enemy[] = [];
   for (let i = 0; i < count; i++) {
     const seed = hashKey(`${cellKey}:${i}:${wave}`);
-    // round-robin wall sides so enemies come from all directions
-    const side = i % 4; // 0=top, 1=bottom, 2=left, 3=right
-    const along = SPAWN_LO + (seed % (SPAWN_HI - SPAWN_LO));
+    const side = i % 4;
+    // Evenly spaced within the side + small jitter so enemies don't stack.
+    const k = sideIdx[side]++;
+    const n = perSide[side];
+    const jitter = ((seed >>> 12) % 41) - 20; // ±20 px
+    const along = Math.round(SPAWN_LO + ((k + 1) / (n + 1)) * range + jitter);
     const inset = EDGE_INSET_LO + ((seed >>> 8) % (EDGE_INSET_HI - EDGE_INSET_LO));
     let x: number, y: number;
     if (side === 0) { x = along; y = SPAWN_LO + inset; }
     else if (side === 1) { x = along; y = SPAWN_HI - inset; }
     else if (side === 2) { x = SPAWN_LO + inset; y = along; }
     else { x = SPAWN_HI - inset; y = along; }
-    const kind: EnemyKind = (seed >>> 16) % 2 === 0 ? "shooter" : "charger";
+    const kind = kinds[i];
     const hp = kind === "charger" ? 20 : 15;
     const cooldown = kind === "charger" ? 0.5 + (seed % 10) * 0.15 : 2.5;
     enemies.push({ id: `${cellKey}:${i}:${wave}`, kind, x, y, hp, maxHp: hp, shootCooldown: cooldown });
@@ -87,29 +106,45 @@ const ROOM_HI = (GRID - 1) * TILE;
 export function moveEnemies(enemies: Enemy[], px: number, py: number, dt: number): Enemy[] {
   const pcx = px + 17;
   const pcy = py + 17;
-  return enemies.map((e) => {
-    const dx = pcx - e.x;
-    const dy = pcy - e.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    let nx = e.x;
-    let ny = e.y;
+  const pos: [number, number][] = enemies.map((e) => {
+    let nx = e.x, ny = e.y;
     if (e.kind === "charger") {
       if ((e.chargeTimeLeft ?? 0) > 0 && e.chargeDx !== undefined) {
-        // sprint in locked direction — no tracking during charge
         nx += e.chargeDx * CHARGE_SPEED * dt;
         ny += (e.chargeDy ?? 0) * CHARGE_SPEED * dt;
       }
-      // paused: no movement
-    } else if (dist < SHOOTER_PREFERRED_DIST) {
-      nx -= (dx / dist) * SHOOTER_SPEED * dt;
-      ny -= (dy / dist) * SHOOTER_SPEED * dt;
+    } else {
+      const dx = pcx - e.x, dy = pcy - e.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (dist < SHOOTER_PREFERRED_DIST) {
+        nx -= (dx / dist) * SHOOTER_SPEED * dt;
+        ny -= (dy / dist) * SHOOTER_SPEED * dt;
+      }
     }
-    return {
-      ...e,
-      x: Math.max(ROOM_LO, Math.min(ROOM_HI, nx)),
-      y: Math.max(ROOM_LO, Math.min(ROOM_HI, ny)),
-    };
+    return [nx, ny];
   });
+  // separation: smooth repulsion that kicks in well before visual overlap,
+  // so enemies never stack. Larger radius ensures push > AI convergence velocity.
+  const REPULSE_R = 80;
+  for (let i = 0; i < pos.length; i++) {
+    for (let j = i + 1; j < pos.length; j++) {
+      const dx = pos[i][0] - pos[j][0], dy = pos[i][1] - pos[j][1];
+      const d = Math.hypot(dx, dy);
+      if (d < REPULSE_R) {
+        const push = (REPULSE_R - d) * 0.5;
+        // if exactly coincident, push along an axis determined by index
+        const ux = d > 0.5 ? dx / d : (i % 2 === 0 ? 1 : -1);
+        const uy = d > 0.5 ? dy / d : 0;
+        pos[i][0] += ux * push; pos[i][1] += uy * push;
+        pos[j][0] -= ux * push; pos[j][1] -= uy * push;
+      }
+    }
+  }
+  return enemies.map((e, i) => ({
+    ...e,
+    x: Math.max(ROOM_LO, Math.min(ROOM_HI, pos[i][0])),
+    y: Math.max(ROOM_LO, Math.min(ROOM_HI, pos[i][1])),
+  }));
 }
 
 const SHOOTER_PROJ_SPEED = 320; // px/s
