@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useDungeon } from "../store";
-import { completenessOf } from "../stats";
+import { completenessOf, DWELL_TARGET } from "../stats";
 import { paletteFor } from "../theme";
 import TrackDetail from "./TrackDetail";
 
@@ -24,8 +24,8 @@ export default function TrackDetailPanel({ trackId, onClose }: Props) {
   const { glow } = paletteFor(track.models);
   const cellKey = placed[trackId];
   const visited = cellKey ? visitedKeys.includes(cellKey) : false;
-  const attunement = visited ? completenessOf(dwell[cellKey]) : undefined;
   const duration = durations[trackId];
+  const attunement = visited ? completenessOf(dwell[cellKey], duration ?? DWELL_TARGET) : undefined;
 
   return (
     <>

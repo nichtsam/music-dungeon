@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDungeon } from "../store";
-import { completenessOf } from "../stats";
+import { completenessOf, DWELL_TARGET } from "../stats";
 import { paletteFor, topMood } from "../theme";
 import TrackDetail from "./TrackDetail";
 
@@ -22,8 +22,8 @@ export default function TrackHUD() {
 
   const { glow } = paletteFor(track.models);
   const mood = topMood(track.models);
-  const attunement = completenessOf(currentKey ? dwell[currentKey] : undefined);
   const duration = track.id ? durations[track.id] : undefined;
+  const attunement = completenessOf(currentKey ? dwell[currentKey] : undefined, duration ?? DWELL_TARGET);
 
   return (
     <div

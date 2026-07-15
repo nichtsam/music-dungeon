@@ -10,6 +10,7 @@ import { useDungeon } from "../store";
 import {
   completenessOf,
   derivePlayerStats,
+  DWELL_TARGET,
   sprintMaxSeconds,
   sprintMultiplier,
 } from "../stats";
@@ -38,7 +39,7 @@ interface NestNode {
 }
 
 export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId: string) => void }) {
-  const { cells, tracks, currentKey, visitedKeys, dwell, placed } = useDungeon();
+  const { cells, tracks, currentKey, visitedKeys, dwell, placed, durations } = useDungeon();
   const [hover, setHover] = useState<NestNode | null>(null);
   const clickOrigin = useRef<{ x: number; y: number } | null>(null);
   const { overlayRef, sceneRef, pointerHandlers, zoom } = useOrbitCamera();
@@ -89,7 +90,7 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
         genre: track?.models?.genre ?? null,
         bpm: track?.models?.bpm ?? null,
         isCurrent: key === currentKey,
-        completeness: locked ? 0 : completenessOf(dwell[key]),
+        completeness: locked ? 0 : completenessOf(dwell[key], durations[cell.trackId] ?? DWELL_TARGET),
         locked,
       };
     });
@@ -102,11 +103,11 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
       ? unlocked.reduce((s, n) => s + n.completeness, 0) / unlocked.length
       : 0;
     return { nodes, tunnels, moodCounts, avgC };
-  }, [cells, tracks, currentKey, visitedKeys, dwell]);
+  }, [cells, tracks, currentKey, visitedKeys, dwell, durations]);
 
   const unlockedNodes = nodes.filter((n) => !n.locked);
   const attuned = unlockedNodes.filter((n) => n.completeness >= 1).length;
-  const stats = derivePlayerStats(dwell, placed, tracks);
+  const stats = derivePlayerStats(dwell, placed, tracks, durations);
 
   return (
     <div

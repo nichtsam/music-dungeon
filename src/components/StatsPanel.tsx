@@ -15,15 +15,18 @@ const AGI = "#ffd700";
 const STAM = "#7bd88f";
 
 export default function StatsPanel() {
-  const { placed, tracks, dwell, visitedKeys } = useDungeon();
-  const stats = derivePlayerStats(dwell, placed, tracks);
+  const { placed, tracks, dwell, visitedKeys, cells, durations } = useDungeon();
+  const stats = derivePlayerStats(dwell, placed, tracks, durations);
 
   const attuned = Object.entries(placed)
-    .filter(([, cellKey]) => (dwell[cellKey] ?? 0) >= DWELL_TARGET)
+    .filter(([trackId, cellKey]) => (dwell[cellKey] ?? 0) >= (durations[trackId] ?? DWELL_TARGET))
     .map(([trackId]) => tracks[trackId])
     .filter(Boolean);
   const avgC = visitedKeys.length
-    ? visitedKeys.reduce((s, k) => s + completenessOf(dwell[k]), 0) / visitedKeys.length
+    ? visitedKeys.reduce((s, k) => {
+        const target = durations[cells[k]?.trackId ?? ""] ?? DWELL_TARGET;
+        return s + completenessOf(dwell[k], target);
+      }, 0) / visitedKeys.length
     : 0;
 
   return (

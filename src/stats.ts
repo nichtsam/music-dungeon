@@ -3,11 +3,10 @@
 // Design + rationale: docs/design/2026-07-12-attunement-stats.md
 import type { TrackInfo } from "./dungeon";
 
-// ponytail: 30s dwell = "fully listened" placeholder; swap in real track
-// duration once M4 wires the API
+// fallback when audio duration is unavailable (mock tracks, not-yet-loaded)
 export const DWELL_TARGET = 30;
-export const completenessOf = (dwell: number | undefined) =>
-  Math.min(1, (dwell ?? 0) / DWELL_TARGET);
+export const completenessOf = (dwell: number | undefined, target = DWELL_TARGET) =>
+  Math.min(1, (dwell ?? 0) / target);
 
 export interface PlayerStats {
   agility: number;
@@ -23,11 +22,13 @@ export function derivePlayerStats(
   dwell: Record<string, number>,
   placed: Record<string, string>,
   tracks: Record<string, TrackInfo>,
+  durations: Record<string, number> = {},
 ): PlayerStats {
   let agility = 0;
   let stamina = 0;
   for (const [trackId, cellKey] of Object.entries(placed)) {
-    if ((dwell[cellKey] ?? 0) < DWELL_TARGET) continue;
+    const target = durations[trackId] ?? DWELL_TARGET;
+    if ((dwell[cellKey] ?? 0) < target) continue;
     const share = agilityShare(tracks[trackId]?.models?.bpm);
     agility += share;
     stamina += 1 - share;
