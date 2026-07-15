@@ -1,18 +1,29 @@
 // Deterministic force-directed spring layout for the Attunements3D similarity graph.
 // No randomness: hash-based initial positions, fixed iteration count.
+// Multiple connected components are laid out independently and placed as islands.
 import type { V3 } from "../components/map3d";
 
 const SPRING_MIN = 110;
 const SPRING_RANGE = 520; // L = 110 + (1-score)*520
 const ITERATIONS = 250;
+const ISLAND_RADIUS = 1600; // distance between component centroids
 
-export function springLayout(
-  ids: string[],
+function unionFind(n: number, edges: { a: number; b: number }[]): number[] {
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (x: number): number =>
+    parent[x] === x ? x : (parent[x] = find(parent[x]));
+  for (const e of edges) {
+    const pa = find(e.a), pb = find(e.b);
+    if (pa !== pb) parent[pa] = pb;
+  }
+  return Array.from({ length: n }, (_, i) => find(i));
+}
+
+function layoutComponent(
   hashes: number[],
   edges: { a: number; b: number; score: number }[],
-  zStretch = 2.4,
 ): V3[] {
-  const n = ids.length;
+  const n = hashes.length;
   const pos: V3[] = hashes.map((h) => {
     const t = ((h % 997) / 997) * Math.PI * 2;
     // >>> not >>: hashes >= 2^31 turn negative under signed shift (u < -1 → NaN sqrt)
@@ -21,7 +32,7 @@ export function springLayout(
     const s = Math.sqrt(1 - u * u);
     return [r * s * Math.cos(t), r * s * Math.sin(t), r * u * 0.7];
   });
-  const vel: V3[] = ids.map(() => [0, 0, 0]);
+  const vel: V3[] = hashes.map(() => [0, 0, 0] as V3);
 
   for (let it = 0; it < ITERATIONS; it++) {
     const step = 0.9 * (1 - it / ITERATIONS) + 0.1;
@@ -54,12 +65,13 @@ export function springLayout(
       vel[i][0] *= 0.6; vel[i][1] *= 0.6; vel[i][2] *= 0.6;
     }
   }
+  // center component at local origin
   for (let axis = 0; axis < 3; axis++) {
     const vals = pos.map((p) => p[axis]);
     const mid = (Math.min(...vals) + Math.max(...vals)) / 2;
     for (const p of pos) p[axis] -= mid;
   }
-  // enforce minimum center-to-center distance (40px cube → 80px gap)
+  // enforce minimum separation
   const MIN_D = 80;
   for (let pass = 0; pass < 20; pass++) {
     for (let i = 0; i < n; i++) {
@@ -75,8 +87,54 @@ export function springLayout(
       }
     }
   }
-  for (const p of pos) p[2] *= zStretch;
   return pos;
+}
+
+export function springLayout(
+  ids: string[],
+  hashes: number[],
+  edges: { a: number; b: number; score: number }[],
+  zStretch = 2.4,
+): V3[] {
+  const n = ids.length;
+  if (n === 0) return [];
+
+  // Find connected components; each becomes an isolated island.
+  const comp = unionFind(n, edges);
+  const compMap = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const c = comp[i];
+    if (!compMap.has(c)) compMap.set(c, []);
+    compMap.get(c)!.push(i);
+  }
+
+  // Largest component at origin; others placed evenly on a ring.
+  const comps = [...compMap.entries()].sort((a, b) => b[1].length - a[1].length);
+  const result: V3[] = new Array(n);
+
+  comps.forEach(([compRoot, nodeIndices], ci) => {
+    const localHashes = nodeIndices.map((i) => hashes[i]);
+    const localEdges = edges
+      .filter((e) => comp[e.a] === compRoot)
+      .map((e) => ({
+        a: nodeIndices.indexOf(e.a),
+        b: nodeIndices.indexOf(e.b),
+        score: e.score,
+      }));
+    const lpos = layoutComponent(localHashes, localEdges);
+
+    const angle = ci === 0 ? 0 : ((ci - 1) / Math.max(comps.length - 1, 1)) * Math.PI * 2;
+    const ox = ci === 0 ? 0 : ISLAND_RADIUS * Math.cos(angle);
+    const oy = ci === 0 ? 0 : ISLAND_RADIUS * Math.sin(angle);
+    nodeIndices.forEach((ni, li) => {
+      result[ni] = [ox + lpos[li][0], oy + lpos[li][1], lpos[li][2]];
+    });
+  });
+
+  // Each component is centered at its local origin; main component is already at (0,0,0).
+  // Caller is responsible for further centering (e.g. on the current node).
+  for (const p of result) p[2] *= zStretch;
+  return result;
 }
 
 if (import.meta.env.DEV) {

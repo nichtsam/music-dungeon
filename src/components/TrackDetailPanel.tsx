@@ -10,8 +10,8 @@ interface Props {
 }
 
 export default function TrackDetailPanel({ trackId, onClose }: Props) {
-  const { tracks, placed, dwell, durations, visitedKeys } = useDungeon();
-  const track = tracks[trackId];
+  const { tracks, treeNodes, placed, dwell, totalDwell, durations, visitedKeys } = useDungeon();
+  const track = treeNodes[trackId] ?? tracks[trackId];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -23,9 +23,12 @@ export default function TrackDetailPanel({ trackId, onClose }: Props) {
 
   const { glow } = paletteFor(track.models);
   const cellKey = placed[trackId];
-  const visited = cellKey ? visitedKeys.includes(cellKey) : false;
+  const visitedThisRun = cellKey ? visitedKeys.includes(cellKey) : false;
   const duration = durations[trackId];
-  const attunement = visited ? completenessOf(dwell[cellKey], duration ?? DWELL_TARGET) : undefined;
+  const effectiveDwell = Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0);
+  const attunement = (visitedThisRun || totalDwell[trackId])
+    ? completenessOf(effectiveDwell, duration ?? DWELL_TARGET)
+    : undefined;
 
   return (
     <>
@@ -50,7 +53,7 @@ export default function TrackDetailPanel({ trackId, onClose }: Props) {
           overflowY: "auto",
         }}
       >
-        {!visited ? (
+        {!visitedThisRun && !totalDwell[trackId] ? (
           <div style={{ color: "#b0a8d0" }}>
             <div style={{ fontSize: 17, fontWeight: 700, color: "#8a7ab8", marginBottom: 8 }}>
               🔒 {track.title}

@@ -15,13 +15,19 @@ const AGI = "#ffd700";
 const STAM = "#7bd88f";
 
 export default function StatsPanel() {
-  const { placed, tracks, dwell, visitedKeys, cells, durations } = useDungeon();
-  const stats = derivePlayerStats(dwell, placed, tracks, durations);
+  const { placed, tracks, dwell, visitedKeys, cells, durations, totalDwell, treeNodes } = useDungeon();
+  const stats = derivePlayerStats(dwell, placed, tracks, durations, totalDwell);
 
   const attuned = Object.entries(placed)
-    .filter(([trackId, cellKey]) => (dwell[cellKey] ?? 0) >= (durations[trackId] ?? DWELL_TARGET))
+    .filter(([trackId, cellKey]) => {
+      const effective = Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0);
+      return effective >= (durations[trackId] ?? DWELL_TARGET);
+    })
     .map(([trackId]) => tracks[trackId])
     .filter(Boolean);
+
+  // tracks visited in past runs that aren't in the current dungeon
+  const prevAttuned = Object.entries(treeNodes).filter(([trackId]) => !placed[trackId]);
   const avgC = visitedKeys.length
     ? visitedKeys.reduce((s, k) => {
         const target = durations[cells[k]?.trackId ?? ""] ?? DWELL_TARGET;
@@ -134,6 +140,43 @@ export default function StatsPanel() {
             </div>
           );
         })}
+
+        {prevAttuned.length > 0 && (
+          <>
+            <div style={{ fontSize: 14, opacity: 0.6, marginTop: 20, marginBottom: 8 }}>
+              PREVIOUS RUNS (VISITED)
+            </div>
+            {prevAttuned.map(([trackId, t]) => {
+              const share = agilityShare(t.models?.bpm);
+              const glow = paletteFor(t.models).glow;
+              return (
+                <div
+                  key={trackId}
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 10,
+                    padding: "6px 10px",
+                    borderLeft: `3px solid ${glow}60`,
+                    background: "#0c0a1440",
+                    marginBottom: 4,
+                    fontSize: 14,
+                    opacity: 0.7,
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    🎵 {t.title}
+                  </span>
+                  <span style={{ opacity: 0.6 }}>
+                    {t.models?.bpm ? `${t.models.bpm} BPM` : "? BPM"}
+                  </span>
+                  <span style={{ color: AGI }}>+{share.toFixed(2)}⚡</span>
+                  <span style={{ color: STAM }}>+{(1 - share).toFixed(2)}🫀</span>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );

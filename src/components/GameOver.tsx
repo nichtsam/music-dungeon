@@ -5,7 +5,7 @@ import { paletteFor } from "../theme";
 import TrackDetail from "./TrackDetail";
 
 export default function GameOver() {
-  const { dwell, tracks, cells, durations, visitedKeys, resetDungeon } = useDungeon();
+  const { dwell, totalDwell, tracks, cells, durations, visitedKeys, resetDungeon } = useDungeon();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const entries = useMemo(() => {
@@ -16,13 +16,13 @@ export default function GameOver() {
         const track = tracks[trackId];
         if (!track) return null;
         const target = durations[trackId] ?? DWELL_TARGET;
-        const dwellSec = dwell[cellKey] ?? 0;
-        const attunement = completenessOf(dwellSec, target);
+        const effectiveDwell = Math.max(dwell[cellKey] ?? 0, totalDwell[trackId] ?? 0);
+        const attunement = completenessOf(effectiveDwell, target);
         return { cellKey, trackId, track, attunement };
       })
       .filter((e): e is NonNullable<typeof e> => e !== null)
       .sort((a, b) => b.attunement - a.attunement);
-  }, [visitedKeys, cells, tracks, dwell, durations]);
+  }, [visitedKeys, cells, tracks, dwell, totalDwell, durations]);
 
   const attuned = entries.filter((e) => e.attunement >= 1).length;
 

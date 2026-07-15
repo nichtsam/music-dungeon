@@ -16,7 +16,7 @@ import {
 } from "../stats";
 import { paletteFor, topMood } from "../theme";
 import { hashKey } from "../dungeon";
-import { CUBE_FACES, edgeKey, lineStyle, shade, useOrbitCamera, type V3 } from "./map3d";
+import { CUBE_FACES, lineStyle, shade, useOrbitCamera, type V3 } from "./map3d";
 import { springLayout } from "../lib/springLayout";
 
 const HALO = 70;
@@ -39,61 +39,87 @@ interface NestNode {
 }
 
 export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId: string) => void }) {
-  const { cells, tracks, currentKey, visitedKeys, dwell, placed, durations } = useDungeon();
+  const { cells, tracks, currentKey, visitedKeys, dwell, placed, durations, totalDwell, treeNodes, treeEdges } = useDungeon();
   const [hover, setHover] = useState<NestNode | null>(null);
   const clickOrigin = useRef<{ x: number; y: number } | null>(null);
   const { overlayRef, sceneRef, pointerHandlers, zoom } = useOrbitCamera();
 
   const { nodes, tunnels, moodCounts, avgC } = useMemo(() => {
-    const visited = new Set(visitedKeys);
-    // locked previews: tracks our collection points at but hasn't visited
-    const lockedKeys: string[] = [];
+    // Unified node set: all treeNodes (ever-visited) + current-run locked previews.
+    // All nodes are keyed by trackId for stability across runs.
+    const lockedIds = new Set<string>();
     for (const key of visitedKeys)
-      for (const ex of cells[key]?.exits ?? [])
-        if (!visited.has(ex.toKey) && !lockedKeys.includes(ex.toKey))
-          lockedKeys.push(ex.toKey);
-    const allKeys = [...visitedKeys, ...lockedKeys];
-    const idx = new Map(allKeys.map((k, i) => [k, i]));
-
-    // every known similarity relation — kinds and discovery don't matter here
-    const rawEdges: { a: number; b: number; score: number; toLocked: boolean }[] = [];
-    const seen = new Set<string>();
-    for (const key of visitedKeys) {
       for (const ex of cells[key]?.exits ?? []) {
-        const k = edgeKey(key, ex.toKey);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        rawEdges.push({
-          a: idx.get(key)!,
-          b: idx.get(ex.toKey)!,
-          score: ex.score,
-          toLocked: !visited.has(ex.toKey),
-        });
+        const toTrackId = cells[ex.toKey]?.trackId;
+        if (toTrackId && !treeNodes[toTrackId]) lockedIds.add(toTrackId);
+      }
+
+    const treeTrackIds = Object.keys(treeNodes);
+    const allTrackIds = [...treeTrackIds, ...lockedIds];
+    const idx = new Map(allTrackIds.map((id, i) => [id, i]));
+
+    // Edges: persistent treeEdges + current-run exits to locked previews.
+    const rawEdges: { a: number; b: number; score: number; toLocked: boolean }[] = [];
+    const seenPairs = new Set<string>();
+    const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+
+    for (const e of treeEdges) {
+      if (!idx.has(e.fromTrackId) || !idx.has(e.toTrackId)) continue;
+      const pk = pairKey(e.fromTrackId, e.toTrackId);
+      if (seenPairs.has(pk)) continue;
+      seenPairs.add(pk);
+      rawEdges.push({ a: idx.get(e.fromTrackId)!, b: idx.get(e.toTrackId)!, score: e.score, toLocked: false });
+    }
+    for (const key of visitedKeys) {
+      const fromId = cells[key]?.trackId;
+      if (!fromId || !idx.has(fromId)) continue;
+      for (const ex of cells[key]?.exits ?? []) {
+        const toId = cells[ex.toKey]?.trackId;
+        if (!toId || !idx.has(toId)) continue;
+        const pk = pairKey(fromId, toId);
+        if (seenPairs.has(pk)) continue;
+        seenPairs.add(pk);
+        rawEdges.push({ a: idx.get(fromId)!, b: idx.get(toId)!, score: ex.score, toLocked: lockedIds.has(toId) });
       }
     }
+
     const positions = springLayout(
-      allKeys,
-      allKeys.map((k) => hashKey(cells[k]?.trackId ?? k)),
+      allTrackIds,
+      allTrackIds.map((id) => hashKey(id)),
       rawEdges,
     );
-    const nodes: NestNode[] = allKeys.map((key, i) => {
-      const cell = cells[key];
-      const track = tracks[cell.trackId];
-      const locked = i >= visitedKeys.length;
+
+    // Shift so the current room's node is at origin (scene center = viewport center).
+    const currentTrackId = cells[currentKey ?? ""]?.trackId;
+    const currentIdx = currentTrackId ? allTrackIds.indexOf(currentTrackId) : -1;
+    if (currentIdx >= 0) {
+      const cx = positions[currentIdx][0], cy = positions[currentIdx][1], cz = positions[currentIdx][2];
+      for (const p of positions) { p[0] -= cx; p[1] -= cy; p[2] -= cz; }
+    }
+
+    const nodes: NestNode[] = allTrackIds.map((trackId, i) => {
+      const locked = lockedIds.has(trackId);
+      const track = treeNodes[trackId] ?? tracks[trackId];
+      const cellKey = placed[trackId];
+      const dwellVal = dwell[cellKey] ?? 0;
       return {
-        key,
-        trackId: cell.trackId,
+        key: trackId,
+        trackId,
         pos: positions[i],
-        title: track?.title ?? cell.trackId,
+        title: track?.title ?? trackId,
         glow: paletteFor(track?.models).glow,
         mood: topMood(track?.models),
         genre: track?.models?.genre ?? null,
         bpm: track?.models?.bpm ?? null,
-        isCurrent: key === currentKey,
-        completeness: locked ? 0 : completenessOf(dwell[key], durations[cell.trackId] ?? DWELL_TARGET),
+        isCurrent: cellKey === currentKey,
+        completeness: locked ? 0 : completenessOf(
+          Math.max(dwellVal, totalDwell[trackId] ?? 0),
+          durations[trackId] ?? DWELL_TARGET,
+        ),
         locked,
       };
     });
+
     const tunnels = rawEdges.map((e) => ({ ...e, p1: positions[e.a], p2: positions[e.b] }));
     const unlocked = nodes.filter((n) => !n.locked);
     const moodCounts = new Map<string, number>();
@@ -103,7 +129,7 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
       ? unlocked.reduce((s, n) => s + n.completeness, 0) / unlocked.length
       : 0;
     return { nodes, tunnels, moodCounts, avgC };
-  }, [cells, tracks, currentKey, visitedKeys, dwell, durations]);
+  }, [cells, tracks, currentKey, visitedKeys, dwell, durations, totalDwell, treeNodes, treeEdges, placed]);
 
   const unlockedNodes = nodes.filter((n) => !n.locked);
   const attuned = unlockedNodes.filter((n) => n.completeness >= 1).length;
@@ -304,6 +330,7 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
           </div>
         </div>
       )}
+
     </div>
   );
 }

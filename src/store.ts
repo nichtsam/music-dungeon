@@ -32,7 +32,9 @@ interface DungeonState {
   gameOver: boolean;
   // meta-progression — persisted
   attunementBonus: Record<string, number>; // cellKey -> dwell multiplier (treasure rooms)
-  totalDwell: Record<string, number>; // trackId -> cumulative dwell seconds across all runs
+  totalDwell: Record<string, number>; // trackId -> best dwell seconds across all runs
+  treeNodes: Record<string, TrackInfo>; // source of truth: all ever-visited tracks, by trackId
+  treeEdges: Array<{ fromTrackId: string; toTrackId: string; score: number }>;
   view: View;
   mapMode: MapMode;
   loading: boolean;
@@ -87,6 +89,8 @@ const EMPTY = {
   gameOver: false,
   attunementBonus: {},
   totalDwell: {},
+  treeNodes: {} as Record<string, TrackInfo>,
+  treeEdges: [] as Array<{ fromTrackId: string; toTrackId: string; score: number }>,
   view: "entrance" as View,
   mapMode: "floor" as MapMode,
   loading: false,
@@ -134,16 +138,15 @@ export const useDungeon = create<DungeonState>((set, get) => ({
   setBonusRoom: (cellKey, mult) =>
     set((s) => ({ attunementBonus: { ...s.attunementBonus, [cellKey]: mult } })),
 
-  // Keep attunement history across runs: snapshot current run's dwell by trackId,
-  // then wipe dungeon state so the next search starts fresh.
+  // Snapshot dwell into totalDwell, preserve the attunement tree, reset run state.
   resetDungeon: () => {
     const s = get();
     const snapshot: Record<string, number> = { ...s.totalDwell };
     for (const [trackId, cellKey] of Object.entries(s.placed)) {
-      snapshot[trackId] = Math.max(snapshot[trackId] ?? 0, s.dwell[cellKey] ?? 0);
+      snapshot[trackId] = Math.max(s.dwell[cellKey] ?? 0, s.totalDwell[trackId] ?? 0);
     }
     localStorage.removeItem(STORAGE_KEY);
-    set({ ...EMPTY, totalDwell: snapshot, view: "entrance" as View });
+    set({ ...EMPTY, totalDwell: snapshot, treeNodes: s.treeNodes, treeEdges: s.treeEdges, view: "entrance" as View });
   },
 
   reset: () => {
@@ -224,15 +227,32 @@ export const useDungeon = create<DungeonState>((set, get) => ({
           externalId: it.track.externalId,
           models: neighborModels[it.track.id],
         };
+      // Grow the attunement tree: only add the track the player just visited.
+      const newTreeNodes: Record<string, TrackInfo> = { ...s.treeNodes, [cell.trackId]: tracks[cell.trackId] };
+
+      // Add edges between this track and any already-visited neighbors (no dangling edges).
+      const allCells = { ...s.cells, ...newCells, [key]: { ...fresh, exits } };
+      const pairKey = (a: string, b: string) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+      const existingPairs = new Set(s.treeEdges.map(e => pairKey(e.fromTrackId, e.toTrackId)));
+      const newEdges: typeof s.treeEdges = [];
+      for (const ex of exits) {
+        const toTrackId = allCells[ex.toKey]?.trackId;
+        if (!toTrackId || toTrackId === cell.trackId) continue;
+        if (!newTreeNodes[toTrackId]) continue; // only visited-to-visited
+        const pk = pairKey(cell.trackId, toTrackId);
+        if (!existingPairs.has(pk)) {
+          newEdges.push({ fromTrackId: cell.trackId, toTrackId, score: ex.score });
+          existingPairs.add(pk);
+        }
+      }
+
       set({
-        cells: {
-          ...s.cells,
-          ...newCells,
-          [key]: { ...fresh, exits },
-        },
+        cells: allCells,
         placed: { ...s.placed, ...newPlaced },
         tracks,
         loading: false,
+        treeNodes: newTreeNodes,
+        treeEdges: newEdges.length ? [...s.treeEdges, ...newEdges] : s.treeEdges,
       });
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
@@ -241,9 +261,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil, gameOver } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, lockUntil, gameOver } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil, gameOver }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, lockUntil, gameOver }),
   );
 });
