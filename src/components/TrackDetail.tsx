@@ -48,7 +48,7 @@ export default function TrackDetail({ track, duration, attunement }: Props) {
       )}
       {sortedMoods.length > 0 && (
         <div>
-          <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 1, marginBottom: 6 }}>MOOD ANALYSIS</div>
+          <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 1, marginBottom: 6 }}>AURA</div>
           {sortedMoods.map(([mood, val]) => (
             <div key={mood} style={{ marginBottom: 5 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, opacity: 0.8, marginBottom: 2 }}>

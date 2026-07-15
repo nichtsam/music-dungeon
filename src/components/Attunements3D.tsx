@@ -285,7 +285,7 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
         <br />
         <span style={{ color: "#ffd700" }}>◼</span> cubes fill as you attune ·{" "}
         <span style={{ color: "#8a84a8" }}>◼</span> not yet visited ·{" "}
-        <span style={{ color: "#5a4a8a" }}>━</span> similarity (closer &amp; thicker = more alike)
+        <span style={{ color: "#5a4a8a" }}>━</span> resonance (closer &amp; thicker = more alike)
       </div>
       <div style={{ position: "absolute", top: 62, right: 16, fontSize: 14, opacity: 0.8, textAlign: "right", pointerEvents: "none", lineHeight: 1.7 }}>
         {[...moodCounts.entries()]

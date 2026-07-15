@@ -9,12 +9,6 @@ import {
   trackContrib,
   HP_PER_PT,
   ATTACK_PER_PT,
-  ATTACK_RATE_BASE,
-  ATTACK_RATE_SLOPE,
-  SPRINT_SPEED_BASE,
-  SPRINT_SPEED_SLOPE,
-  REGEN_BASE,
-  REGEN_SLOPE,
 } from "../stats";
 import { paletteFor } from "../theme";
 
@@ -72,17 +66,17 @@ export default function StatsPanel() {
 
         {/* Core stats: HP, Attack, Agility, Stamina — all equal weight, 2×2 */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          {card(CLR.hp,      "❤️", "HP",      s.maxHP.toFixed(1),    "all listening (base 50)")}
-          {card(CLR.attack,  "⚔️", "ATTACK",  s.attackDmg.toFixed(1),"all listening (base 10)")}
+          {card(CLR.hp,      "❤️", "HP",      s.maxHP.toFixed(1),    "grows with all time spent listening")}
+          {card(CLR.attack,  "⚔️", "ATTACK",  s.attackDmg.toFixed(1),"grows with all time spent listening")}
           {card(CLR.agility, "⚡", "AGILITY", s.agility.toFixed(1),  "from swift, high-tempo music")}
           {card(CLR.stamina, "🫀", "STAMINA", s.stamina.toFixed(1),  "from slow, low-tempo music")}
         </div>
 
         {/* Derived: Sprint Speed, Attack Rate, HP Regen — show formula */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
-          {card(CLR.sprint, "🏃", "SPRINT SPEED", `×${sprintMultiplier(s.agility).toFixed(1)}`, `agility × ${SPRINT_SPEED_SLOPE} + ${SPRINT_SPEED_BASE}`)}
-          {card(CLR.rate,   "🔫", "ATTACK RATE",  `${s.attackRate.toFixed(1)}s`,                `${ATTACK_RATE_BASE} − agility × ${ATTACK_RATE_SLOPE}`)}
-          {card(CLR.hp,     "💉", "HP REGEN",     `${hpRegenRate(s.stamina).toFixed(1)}/s`,     `stamina × ${REGEN_SLOPE} + ${REGEN_BASE}`)}
+          {card(CLR.sprint, "🏃", "SPRINT SPEED", `×${sprintMultiplier(s.agility).toFixed(1)}`, "quickens with agility")}
+          {card(CLR.rate,   "🔫", "ATTACK RATE",  `${s.attackRate.toFixed(1)}s`,               "quickens with agility")}
+          {card(CLR.hp,     "💉", "HP REGEN",     `${hpRegenRate(s.stamina).toFixed(1)}/s`,    "quickens with stamina")}
         </div>
 
         {/* Track contributions */}
