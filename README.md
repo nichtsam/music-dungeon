@@ -1,9 +1,18 @@
 # Music Dungeon
 
-Search 2.0 hack-day demo: free-text search finds a starting track, then every
-track is a dungeon room whose exits lead to similar tracks. Explore the
-similarity graph in 2D; press **Tab** to see the explored dungeon as a 3D
-force-directed map.
+The core idea is to improve music exploration through engaging gameplay. You
+start from your own vibe, and the game explores similar music from there. The
+design encourages you to listen as much as possible, and forces you to listen
+at least a little — so that the exploration just passes without you noticing,
+avoiding the fatigue that usually comes with music discovery.
+
+On top of that, the game uses each track's own musical characteristics to
+create variety — mood, tempo, energy all quietly shape the gameplay of that
+room, so each song's personality shows up in the experience without being
+spelled out.
+
+Content is limited and the balance isn't great, but I think it's a concept
+with a lot of potential.
 
 ## Run
 
