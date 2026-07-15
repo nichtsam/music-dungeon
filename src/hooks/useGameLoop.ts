@@ -3,6 +3,11 @@ import { useDungeon } from "../store";
 import { derivePlayerStats, sprintMaxSeconds, sprintMultiplier } from "../stats";
 import { GRID, ROOM_PX, type Rect } from "../roomLayout";
 import { TILE } from "../sprites";
+import {
+  type Enemy, type Projectile,
+  moveEnemies, tickShooters, moveProjectiles, isOutOfBounds,
+  checkCollisions, PLAYER_PROJ_SPEED, spawnEnemies, roomTypeFor,
+} from "../combat";
 
 export const CHAR = 34; // character collision box px
 export const SPEED = 250; // px/s
@@ -31,6 +36,7 @@ export function useGameLoop<T extends Focusable>({
   interactRef,
   onFocusChange,
   staminaRef,
+  hpBarRef,
 }: {
   pos: React.MutableRefObject<{ x: number; y: number }>;
   charRef: React.RefObject<HTMLDivElement | null>;
@@ -42,9 +48,20 @@ export function useGameLoop<T extends Focusable>({
   interactRef: React.MutableRefObject<() => void>;
   onFocusChange: (it: T | null) => void;
   staminaRef?: React.RefObject<HTMLDivElement | null>;
-}): void {
+  hpBarRef?: React.RefObject<HTMLDivElement | null>;
+}): { enemiesRef: React.MutableRefObject<Enemy[]>; projectilesRef: React.MutableRefObject<Projectile[]>; playerHPRef: React.MutableRefObject<number> } {
   const onFocusChangeRef = useRef(onFocusChange);
   onFocusChangeRef.current = onFocusChange;
+
+  const enemiesRef = useRef<Enemy[]>([]);
+  const projectilesRef = useRef<Projectile[]>([]);
+  const playerHPRef = useRef(-1); // -1 = uninitialised, set to maxHP on first combat tick
+  const autoAttackCdRef = useRef(0); // seconds until next player shot
+  const projIdSeqRef = useRef(0);
+  const gameOverFiredRef = useRef(false); // prevent double-dispatch
+  const waveRef = useRef(0);
+  const spawnTimerRef = useRef(0); // seconds until next reinforcement wave
+  const prevKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const held = new Set<string>();
@@ -52,7 +69,10 @@ export function useGameLoop<T extends Focusable>({
       if (e.key === "Shift") { held.add("sprint"); return; }
       if (e.key === " ") {
         e.preventDefault();
-        if (useDungeon.getState().view === "dungeon") interactRef.current();
+        const s = useDungeon.getState();
+        if (s.view !== "dungeon") return;
+        const lock = s.lockUntil[s.currentKey ?? ""] ?? 0;
+        if (Date.now() >= lock) interactRef.current();
         return;
       }
       const dir = KEYMAP[e.key];
@@ -74,16 +94,23 @@ export function useGameLoop<T extends Focusable>({
       const dt = Math.min((t - last) / 1000, 0.05);
       last = t;
       const state = useDungeon.getState();
-      if (state.view !== "dungeon") {
+      if (state.view !== "dungeon" || state.loading) {
         held.clear();
         raf = requestAnimationFrame(tick);
         return;
       }
+
+      // detect room change → reset spawn timer
+      if (state.currentKey !== prevKeyRef.current) {
+        prevKeyRef.current = state.currentKey;
+        spawnTimerRef.current = 6; // first reinforcement 6s after entry
+      }
+
       const p = pos.current;
       const moving = held.size > 0 && !leavingRef.current;
 
       // stamina: attuned slow tracks stretch the bar, fast tracks raise the speed
-      const stats = derivePlayerStats(state.dwell, state.placed, state.tracks);
+      const stats = derivePlayerStats(state.dwell, state.placed, state.tracks, state.durations, state.totalDwell);
       const maxStam = sprintMaxSeconds(stats.stamina);
       if (stam < 0) stam = maxStam;
       if (winded && stam >= maxStam * STAMINA_REENGAGE) winded = false;
@@ -112,6 +139,98 @@ export function useGameLoop<T extends Focusable>({
         p.x = Math.max(TILE, Math.min((GRID - 1) * TILE - CHAR, p.x));
         p.y = Math.max(2 * TILE, Math.min((GRID - 1) * TILE - CHAR, p.y));
       }
+      // --- combat tick --------------------------------------------------------
+      const enemies = enemiesRef.current;
+      if (enemies.length > 0 || projectilesRef.current.length > 0) {
+        // init HP on first combat encounter
+        if (playerHPRef.current < 0) playerHPRef.current = stats.maxHP;
+
+        // move enemies, tick shooters
+        let moved = moveEnemies(enemies, p.x, p.y, dt);
+        const { enemies: afterShoot, spawned } = tickShooters(moved, p.x, p.y, dt, projIdSeqRef.current);
+        projIdSeqRef.current += spawned.length;
+        moved = afterShoot;
+
+        // auto-attack: fire at nearest enemy when cooldown elapsed
+        autoAttackCdRef.current = Math.max(0, autoAttackCdRef.current - dt);
+        if (autoAttackCdRef.current === 0 && moved.length > 0) {
+          autoAttackCdRef.current = stats.attackRate;
+          const pcx = p.x + 17;
+          const pcy = p.y + 17;
+          let nearestDist = Infinity;
+          let target = moved[0];
+          for (const e of moved) {
+            const d = Math.hypot(e.x - pcx, e.y - pcy);
+            if (d < nearestDist) { nearestDist = d; target = e; }
+          }
+          const dx = target.x - pcx;
+          const dy = target.y - pcy;
+          const dist = Math.hypot(dx, dy) || 1;
+          spawned.push({
+            id: `p${projIdSeqRef.current++}`,
+            x: pcx, y: pcy,
+            vx: (dx / dist) * PLAYER_PROJ_SPEED,
+            vy: (dy / dist) * PLAYER_PROJ_SPEED,
+            fromPlayer: true,
+            damage: stats.attackDmg,
+          });
+        }
+
+        // move projectiles — collision checked BEFORE OOB filter
+        // so a shot that exits the room on its last frame still registers hits
+        const movedProj = moveProjectiles([...projectilesRef.current, ...spawned], dt);
+
+        // collisions
+        const { playerDmg, enemyHits, consumedProjIds, chargerHitIds } = checkCollisions(
+          moved, movedProj, p.x, p.y,
+        );
+        const consumedSet = new Set(consumedProjIds);
+        const chargerHitSet = new Set(chargerHitIds);
+
+        // apply enemy HP hits and mark charger impacts
+        const surviving = moved
+          .map((e) => {
+            const hit = enemyHits.find((h) => h.id === e.id);
+            const impacted = chargerHitSet.has(e.id);
+            if (!hit && !impacted) return e;
+            return { ...e, hp: e.hp - (hit?.damage ?? 0), chargeHit: impacted || e.chargeHit };
+          })
+          .filter((e) => e.hp > 0);
+
+        enemiesRef.current = surviving;
+        projectilesRef.current = movedProj.filter((pr) => !consumedSet.has(pr.id) && !isOutOfBounds(pr));
+
+        // wave cleared → trigger immediate reinforcement
+        if (surviving.length === 0 && enemies.length > 0) spawnTimerRef.current = 0;
+
+        // player HP
+        playerHPRef.current = Math.max(0, playerHPRef.current - playerDmg);
+        const hp = playerHPRef.current;
+        const hpBar = hpBarRef?.current;
+        if (hpBar) {
+          const frac = hp / stats.maxHP;
+          hpBar.style.width = `${frac * 100}%`;
+          hpBar.style.background = frac > 0.5 ? "#4f4" : frac > 0.25 ? "#fa0" : "#f44";
+        }
+        if (hp <= 0 && !gameOverFiredRef.current) {
+          gameOverFiredRef.current = true;
+          useDungeon.getState().setGameOver(true);
+        }
+      }
+
+      // continuous reinforcements — runs every frame regardless of current enemy count
+      if (state.currentKey && roomTypeFor(state.currentKey, state.runSeed) === "combat") {
+        spawnTimerRef.current -= dt;
+        if (spawnTimerRef.current <= 0) {
+          spawnTimerRef.current = 5;
+          if (enemiesRef.current.length < 15) {
+            const wave = ++waveRef.current;
+            enemiesRef.current = [...enemiesRef.current, ...spawnEnemies(state.currentKey, p.x, p.y, wave)];
+          }
+        }
+      }
+      // --- end combat tick ----------------------------------------------------
+
       let best: T | null = null;
       let bestD = Infinity;
       for (const it of interactablesRef.current) {
@@ -159,4 +278,6 @@ export function useGameLoop<T extends Focusable>({
       cancelAnimationFrame(raf);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { enemiesRef, projectilesRef, playerHPRef };
 }

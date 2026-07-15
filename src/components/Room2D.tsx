@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDungeon } from "../store";
 import { paletteFor, topMood } from "../theme";
 import TrackHUD from "./TrackHUD";
+import CombatOverlay from "./CombatOverlay";
+import GameOver from "./GameOver";
 import { SPR, TILE, spriteStyle } from "../sprites";
 import { hashKey, reciprocalDoors, type CellExit, type ExitSlot } from "../dungeon";
 import { buildLayout, GAP_HI, GRID, ZONES, ROOM_PX, type Rect } from "../roomLayout";
@@ -14,6 +16,8 @@ import { useDwellTracker } from "../hooks/useDwellTracker";
 import { useFloorFlourish } from "../hooks/useFloorFlourish";
 import { useRoomScale } from "../hooks/useRoomScale";
 import { useTilePattern } from "../hooks/useTilePattern";
+import { derivePlayerStats } from "../stats";
+import { roomTypeFor, spawnEnemies } from "../combat";
 
 // ponytail: SIZE is the viewport reference (14 tiles), kept separate from ROOM_PX (42 tiles)
 const TRANSITION_MS = 350;
@@ -81,6 +85,8 @@ export default function Room2D() {
   const {
     cells, tracks, currentKey, visitedKeys, discovered, searched,
     loading, error, reset, discover, markSearched,
+    dwell, placed, durations, totalDwell, runSeed, lockUntil, gameOver,
+    setLockUntil, setGameOver: _setGameOver, setBonusRoom,
   } = useDungeon();
   const enterRoom = useDungeon((s) => s.enterRoom);
   const cell = currentKey ? cells[currentKey] : null;
@@ -95,9 +101,11 @@ export default function Room2D() {
 
   const charRef = useRef<HTMLDivElement>(null);
   const staminaRef = useRef<HTMLDivElement>(null);
+  const hpBarRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ x: SPAWN.portal.x, y: SPAWN.portal.y });
   const leavingRef = useRef(false);
   const [enterDelta, setEnterDelta] = useState<[number, number]>([0, 60]);
+  const [lockSecondsLeft, setLockSecondsLeft] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [focus, setFocus] = useState<Interactable | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -223,16 +231,60 @@ export default function Room2D() {
   const interactRef = useRef(doInteract);
   interactRef.current = doInteract;
 
-  useGameLoop({
+  const { enemiesRef, projectilesRef, playerHPRef } = useGameLoop({
     pos, charRef, cameraRef, scaleRef, viewportRef,
     leavingRef, interactablesRef, interactRef,
     onFocusChange: setFocus,
-    staminaRef,
+    staminaRef, hpBarRef,
   });
 
+  // Room-entry effects: spawn enemies, set lock, or apply rest/treasure bonuses
+  useEffect(() => {
+    if (!currentKey) return;
+    const rtype = roomTypeFor(currentKey, runSeed);
+    if (rtype === "combat") {
+      enemiesRef.current = spawnEnemies(currentKey, pos.current.x, pos.current.y);
+      projectilesRef.current = [];
+      // only lock on first visit — lockUntil persists, so returning players skip the lock
+      if (!lockUntil[currentKey]) {
+        setLockUntil(currentKey, Date.now() + 30_000);
+      }
+    } else if (rtype === "rest") {
+      const stats = derivePlayerStats(dwell, placed, tracks, durations, totalDwell);
+      playerHPRef.current = stats.maxHP;
+      if (hpBarRef.current) {
+        hpBarRef.current.style.width = "100%";
+        hpBarRef.current.style.background = "#4f4";
+      }
+      enemiesRef.current = [];
+      projectilesRef.current = [];
+    } else if (rtype === "treasure") {
+      setBonusRoom(currentKey, 2);
+      enemiesRef.current = [];
+      projectilesRef.current = [];
+    }
+  }, [currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Lock countdown ticker
+  useEffect(() => {
+    if (!currentKey) return;
+    const until = lockUntil[currentKey] ?? 0;
+    if (Date.now() >= until) { setLockSecondsLeft(0); return; }
+    const iv = setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      setLockSecondsLeft(remaining);
+      if (remaining === 0) clearInterval(iv);
+    }, 250);
+    setLockSecondsLeft(Math.ceil((until - Date.now()) / 1000));
+    return () => clearInterval(iv);
+  }, [currentKey, lockUntil]);
+
   if (!cell || !track || !layout) return null;
+  if (gameOver) return <GameOver />;
   scaleRef.current = scale; // keep RAF closure fresh without re-subscribing
   const pal = paletteFor(track.models);
+  const roomType = currentKey ? roomTypeFor(currentKey, runSeed) : "combat";
+  const locked = lockSecondsLeft > 0;
   const mood = topMood(track.models);
   const pulseSec = track.models?.bpm ? (60 / track.models.bpm) * 4 : 3;
   const warm = mood ? WARM_MOODS.has(mood) : false;
@@ -327,6 +379,11 @@ export default function Room2D() {
         {/* vignette */}
         <div style={{ position: "absolute", inset: 0, boxShadow: "inset 0 0 80px #000000a0", pointerEvents: "none", zIndex: 1 }} />
 
+        {/* combat entities: canvas reads enemiesRef/projectilesRef each RAF */}
+        {roomType === "combat" && (
+          <CombatOverlay enemiesRef={enemiesRef} projectilesRef={projectilesRef} />
+        )}
+
         {/* exits: north = native 2x2 wooden door; S/E/W = archway zones;
             up = ladder tile; down = hole tile. All grid-placed via ZONES. */}
         {doorExits.map((ex) => (
@@ -410,10 +467,55 @@ export default function Room2D() {
           <div style={{ position: "absolute", top: -14, left: -3, width: CHAR + 6, height: 5, background: "#0c0a14cc", border: "1px solid #0c0a14", borderRadius: 2, opacity: 0, transition: "opacity 0.3s" }}>
             <div ref={staminaRef} style={{ height: "100%", width: "100%", background: pal.accent, borderRadius: 2 }} />
           </div>
+          {/* HP bar: always visible, game loop drives width/color */}
+          <div style={{ position: "absolute", top: -22, left: -3, width: CHAR + 6, height: 5, background: "#0c0a14cc", border: "1px solid #0c0a1466", borderRadius: 2 }}>
+            <div ref={hpBarRef} style={{ height: "100%", width: "100%", background: "#4f4", borderRadius: 2, transition: "background 0.3s" }} />
+          </div>
         </div>
       </div>
       </div>
       </div>
+
+      {/* loading fog — covers room while exits are being generated */}
+      <div
+        style={{
+          position: "absolute", inset: 0, zIndex: 10,
+          background: "#0c0a14",
+          opacity: loading ? 1 : 0,
+          pointerEvents: loading ? "all" : "none",
+          transition: loading ? "none" : "opacity 0.5s",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexDirection: "column", gap: 14,
+        }}
+      >
+        <div className="pulse" style={{ fontSize: 32, color: pal.accent, animationDuration: "1.2s" }}>✦</div>
+        <div style={{ fontSize: 16, opacity: 0.6, letterSpacing: 2 }}>mapping exits…</div>
+      </div>
+
+      {/* room type badge — top-center, viewport space */}
+      {roomType !== "combat" && (
+        <div style={{
+          position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)",
+          background: roomType === "treasure" ? "#3a2a0a" : "#0a1a0a",
+          border: `1px solid ${roomType === "treasure" ? "#c8902080" : "#20a02080"}`,
+          borderRadius: 4, padding: "4px 14px", fontSize: 14, letterSpacing: 1, zIndex: 4,
+          color: roomType === "treasure" ? "#ffc040" : "#40e090",
+        }}>
+          {roomType === "treasure" ? "✦ TREASURE ROOM — 2× attunement" : "✦ REST — healed to full"}
+        </div>
+      )}
+
+      {/* lock timer — combat rooms, viewport space */}
+      {locked && (
+        <div style={{
+          position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)",
+          background: "#1a0a0a", border: "1px solid #cc222280",
+          borderRadius: 4, padding: "4px 14px", fontSize: 14, letterSpacing: 1, zIndex: 4,
+          color: "#ff6666",
+        }}>
+          🔒 exits sealed — {lockSecondsLeft}s
+        </div>
+      )}
 
       {/* toast + floor flourish: viewport-space so camera follow doesn't displace them */}
       {toast && (
@@ -455,7 +557,6 @@ export default function Room2D() {
           {track.models?.genre && `${track.models.genre} · `}
           {track.models?.bpm && `${track.models.bpm} BPM`}
         </div>
-        {loading && <div style={{ fontSize: 14, opacity: 0.5 }}>carving out exits…</div>}
         {error && <div style={{ fontSize: 14, color: "#ff8080" }}>{error}</div>}
       </div>
 

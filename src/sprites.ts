@@ -65,6 +65,9 @@ export const SPR = {
   fountainBasinBlue: [64, 64, 16, 16] as Spr,
   // wizzard_m: 16x28 frames, 4-frame idle at x=128, 4-frame run at x=192 (y=164)
   wizIdle: [128, 164, 16, 28] as Spr,
+  // monsters — idle frame 0 only (x increments by 16 per frame)
+  goblinIdle: [368, 32, 16, 16] as Spr,      // charger enemy; 4-frame anim
+  necromancerIdle: [368, 268, 16, 20] as Spr, // shooter enemy; 4-frame anim
 };
 
 export function spriteStyle([x, y, w, h]: Spr): CSSProperties {

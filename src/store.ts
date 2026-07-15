@@ -26,6 +26,13 @@ interface DungeonState {
   searched: Record<string, number[]>; // cellKey -> searched suspect-spot indices
   dwell: Record<string, number>; // cellKey -> seconds spent in the room
   durations: Record<string, number>; // trackId -> audio duration in seconds (runtime only)
+  runSeed: string; // randomised per run so room types vary between runs
+  // combat — not persisted, reset on hydrate
+  lockUntil: Record<string, number>; // cellKey -> ms timestamp when lock expires
+  gameOver: boolean;
+  // meta-progression — persisted
+  attunementBonus: Record<string, number>; // cellKey -> dwell multiplier (treasure rooms)
+  totalDwell: Record<string, number>; // trackId -> cumulative dwell seconds across all runs
   view: View;
   mapMode: MapMode;
   loading: boolean;
@@ -34,6 +41,10 @@ interface DungeonState {
   setMapMode: (m: MapMode) => void;
   addDwell: (cellKey: string, seconds: number) => void;
   setDuration: (trackId: string, seconds: number) => void;
+  setLockUntil: (cellKey: string, until: number) => void;
+  setGameOver: (over: boolean) => void;
+  setBonusRoom: (cellKey: string, mult: number) => void;
+  resetDungeon: () => void;
   enterDungeon: (query: string) => Promise<void>;
   enterRoom: (key: string) => Promise<void>;
   discover: (cellKey: string, toKey: string) => void;
@@ -68,6 +79,11 @@ const EMPTY = {
   searched: {},
   dwell: {},
   durations: {},
+  runSeed: "",
+  lockUntil: {},
+  gameOver: false,
+  attunementBonus: {},
+  totalDwell: {},
   view: "entrance" as View,
   mapMode: "floor" as MapMode,
   loading: false,
@@ -83,9 +99,10 @@ export const useDungeon = create<DungeonState>((set, get) => ({
   setMapMode: (mapMode) => set({ mapMode }),
 
   addDwell: (cellKey, seconds) =>
-    set((s) => ({
-      dwell: { ...s.dwell, [cellKey]: (s.dwell[cellKey] ?? 0) + seconds },
-    })),
+    set((s) => {
+      const add = seconds * (s.attunementBonus[cellKey] ?? 1);
+      return { dwell: { ...s.dwell, [cellKey]: (s.dwell[cellKey] ?? 0) + add } };
+    }),
 
   setDuration: (trackId, seconds) =>
     set((s) => ({ durations: { ...s.durations, [trackId]: seconds } })),
@@ -105,6 +122,26 @@ export const useDungeon = create<DungeonState>((set, get) => ({
         [cellKey]: [...(s.searched[cellKey] ?? []), spotIdx],
       },
     })),
+
+  setLockUntil: (cellKey, until) =>
+    set((s) => ({ lockUntil: { ...s.lockUntil, [cellKey]: until } })),
+
+  setGameOver: (over) => set({ gameOver: over }),
+
+  setBonusRoom: (cellKey, mult) =>
+    set((s) => ({ attunementBonus: { ...s.attunementBonus, [cellKey]: mult } })),
+
+  // Keep attunement history across runs: snapshot current run's dwell by trackId,
+  // then wipe dungeon state so the next search starts fresh.
+  resetDungeon: () => {
+    const s = get();
+    const snapshot: Record<string, number> = { ...s.totalDwell };
+    for (const [trackId, cellKey] of Object.entries(s.placed)) {
+      snapshot[trackId] = Math.max(snapshot[trackId] ?? 0, s.dwell[cellKey] ?? 0);
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    set({ ...EMPTY, totalDwell: snapshot, view: "entrance" as View });
+  },
 
   reset: () => {
     localStorage.removeItem(STORAGE_KEY);
@@ -128,6 +165,7 @@ export const useDungeon = create<DungeonState>((set, get) => ({
             externalId: top.track.externalId,
           },
         },
+        runSeed: Math.random().toString(36).slice(2, 9),
         view: "dungeon",
       });
       await get().enterRoom(key);
@@ -200,9 +238,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, runSeed, attunementBonus, totalDwell, lockUntil }),
   );
 });
