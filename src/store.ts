@@ -52,6 +52,8 @@ interface DungeonState {
   setGameOver: (over: boolean) => void;
   saveProgress: (hp: number | null, stamina: number | null, dungeonMs: number) => void;
   setBonusRoom: (cellKey: string, mult: number) => void;
+  volume: number; // 0–1 music volume, persisted
+  setVolume: (v: number) => void;
   resetDungeon: () => void;
   enterDungeon: (query: string) => Promise<void>;
   enterRoom: (key: string) => Promise<void>;
@@ -73,6 +75,7 @@ function hydrate(): Partial<DungeonState> {
       totalDwell: s.totalDwell ?? {},
       treeNodes: s.treeNodes ?? {},
       treeEdges: s.treeEdges ?? [],
+      volume: s.volume ?? 1,
     };
     if (!s.currentKey || !s.cells?.[s.currentKey]) return meta;
     // If the current room never finished loading exits (mid-load refresh),
@@ -106,6 +109,7 @@ const EMPTY = {
   totalDwell: {},
   treeNodes: {} as Record<string, TrackInfo>,
   treeEdges: [] as Array<{ fromTrackId: string; toTrackId: string; score: number }>,
+  volume: 1,
   view: "entrance" as View,
   mapMode: "floor" as MapMode,
   loading: false,
@@ -119,6 +123,8 @@ export const useDungeon = create<DungeonState>((set, get) => ({
   setView: (view) => set({ view }),
 
   setMapMode: (mapMode) => set({ mapMode }),
+
+  setVolume: (volume) => set({ volume }),
 
   addDwell: (cellKey, seconds) =>
     set((s) => {
@@ -297,9 +303,9 @@ export const useDungeon = create<DungeonState>((set, get) => ({
 }));
 
 useDungeon.subscribe((s) => {
-  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs } = s;
+  const { cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs, volume } = s;
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs }),
+    JSON.stringify({ cells, placed, tracks, currentKey, visitedKeys, discovered, searched, dwell, durations, runSeed, attunementBonus, totalDwell, treeNodes, treeEdges, gameOver, lockUntil, savedHP, savedStamina, dungeonMs, volume }),
   );
 });

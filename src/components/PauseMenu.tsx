@@ -9,7 +9,7 @@ const CONTROLS = [
 ];
 
 export default function PauseMenu() {
-  const { setView, resetDungeon, tracks, cells, currentKey } = useDungeon();
+  const { setView, resetDungeon, tracks, cells, currentKey, volume, setVolume } = useDungeon();
   const track = currentKey ? tracks[cells[currentKey]?.trackId ?? ""] : undefined;
   const hasRun = !!currentKey;
 
@@ -43,6 +43,22 @@ export default function PauseMenu() {
               ⛏ {track.title}
             </div>
           )}
+        </div>
+
+        {/* volume */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 14, opacity: 0.6, minWidth: 70 }}>
+            {volume === 0 ? "🔇" : volume < 0.5 ? "🔉" : "🔊"} Volume
+          </span>
+          <input
+            type="range" min={0} max={1} step={0.01}
+            value={volume}
+            onChange={(e) => setVolume(Number(e.target.value))}
+            style={{ flex: 1, accentColor: "#c890ff" }}
+          />
+          <span style={{ fontSize: 13, opacity: 0.45, minWidth: 32, textAlign: "right" }}>
+            {Math.round(volume * 100)}%
+          </span>
         </div>
 
         {/* actions */}

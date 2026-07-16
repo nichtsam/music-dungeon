@@ -10,6 +10,7 @@ export default function AudioPlayer() {
     s.currentKey ? s.tracks[s.cells[s.currentKey]?.trackId ?? ""] : undefined,
   );
   const setDuration = useDungeon((s) => s.setDuration);
+  const volume = useDungeon((s) => s.volume);
   const ref = useRef<HTMLAudioElement>(null);
   const src = track ? audioUrl(track) : null;
 
@@ -30,6 +31,10 @@ export default function AudioPlayer() {
     el.addEventListener("loadedmetadata", onMeta);
     return () => el.removeEventListener("loadedmetadata", onMeta);
   }, [track?.id, setDuration]);
+
+  useEffect(() => {
+    if (ref.current) ref.current.volume = volume;
+  }, [volume]);
 
   if (!src) return null; // mock tracks have no audio
   return <audio ref={ref} src={src} autoPlay loop />;
