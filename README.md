@@ -38,7 +38,15 @@ stream); mock tracks have no audio.
 
 ## Controls
 
-- WASD / arrows — move; walk into a door, ladder, or trapdoor to change rooms
-- Click an exit — same thing
-- Tab / M — toggle the 3D map
-- ↩ new dungeon — reset (exploration persists in localStorage otherwise)
+| Key | Action |
+|---|---|
+| WASD / arrows | move |
+| Shift (hold) | sprint (costs stamina) |
+| Space | interact with nearest exit |
+| Click an exit | enter room |
+| Tab / M | toggle map |
+| 1 / 2 / 3 / 4 | map mode: Floor / Structure / Attunements / Stats |
+| Esc | pause menu (volume) |
+| ↩ new dungeon | reset run (meta-progress persists) |
+
+See [`docs/gameplay.md`](docs/gameplay.md) for rooms, progression, and map details.
