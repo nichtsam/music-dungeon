@@ -114,7 +114,7 @@ export default function Attunements3D({ onNodeClick }: { onNodeClick?: (trackId:
         isCurrent: cellKey === currentKey,
         completeness: locked ? 0 : completenessOf(
           Math.max(dwellVal, totalDwell[trackId] ?? 0),
-          durations[trackId] ?? DWELL_TARGET,
+          durations[trackId] ?? track?.duration ?? DWELL_TARGET,
         ),
         locked,
       };
